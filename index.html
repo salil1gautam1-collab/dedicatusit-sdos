@@ -191,6 +191,13 @@ a.link{color:var(--accent);text-decoration:none}
 .hpips .pl{font-family:var(--mono);font-size:8.5px;color:var(--faint);margin-right:5px}
 .chev{color:var(--faint);font-size:16px;flex:0 0 auto;margin-left:2px}
 .alert-row .chev{margin-left:auto}
+
+.pcard.s-unknown{border-left-color:#3a4a60}
+.trow{display:flex;gap:3px;margin-top:5px;align-items:center;flex-wrap:wrap}
+.tpip{width:13px;height:8px;border-radius:2px;background:#3a4a60;display:inline-block}
+.tpip.green{background:var(--green)}.tpip.amber{background:var(--amber)}.tpip.red{background:var(--red)}
+.actl{display:flex;align-items:center;gap:8px;flex:1;min-width:0;font-size:13px}
+.actl input{width:16px;height:16px;flex:0 0 auto}
 </style>
 </head>
 <body>
@@ -253,7 +260,7 @@ function uid(x){return (x||"x")+Date.now().toString(36)+Math.random().toString(3
 function esc(s){return (s==null?'':String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 
 function blankSeat(){const bf={};SECTIONS.forEach(([k])=>bf[k]={text:"",updated:""});return {id:uid("s"),tech:"",title:"",band:"",started:"",status:"active",
-  health:{msp:"",tech:"",note:"",updated:""},cadence:{freq:14,last:"",next:""},pulse:{last:"",next:""},
+  health:{msp:"",tech:"",note:"",updated:""},cadence:{freq:14,last:"",next:""},pulse:{last:"",next:""},rate:"",renewal:"",actions:[],
   mspLog:[],techLog:[],backfill:bf,growth:{goal:"",lastConvo:""},log:[]};}
 function blankAccount(){return {id:uid("a"),name:"",sdm:state&&state.me?state.me.name:"",started:"",status:"active",
   qbr:{last:"",next:"",notes:""},expansion:[],log:[],seats:[]};}
@@ -289,7 +296,7 @@ function normalize(s){
 function fixSeat(s){s.health=s.health||{msp:"",tech:"",note:"",updated:""};s.cadence=s.cadence||{freq:14,last:"",next:""};
   s.pulse=s.pulse||{last:"",next:""};s.title=s.title||"";s.mspLog=s.mspLog||[];s.techLog=s.techLog||[];
   s.backfill=s.backfill||{};SECTIONS.forEach(([k])=>{if(!s.backfill[k])s.backfill[k]={text:"",updated:""};});
-  s.growth=s.growth||{goal:"",lastConvo:""};s.log=s.log||[];}
+  s.growth=s.growth||{goal:"",lastConvo:""};s.log=s.log||[];s.rate=s.rate||"";s.renewal=s.renewal||"";s.actions=s.actions||[];}
 
 function load(){let s;try{const r=localStorage.getItem(LS);s=r?JSON.parse(r):null;}catch(e){s=null;}state=normalize(s);if(!state.settings)state.settings={weeklyFormUrl:"",monthlyFormUrl:""};if(!state.training)state.training=[];}
 function save(){state.updatedAt=new Date().toISOString();try{localStorage.setItem(LS,JSON.stringify(state));}catch(e){}
@@ -311,6 +318,29 @@ function qbrDue(a){return a.qbr.next?daysTo(a.qbr.next):null;}
 function acctAtt(a){let x=a.seats.reduce((t,s)=>t+seatAtt(s),0);const q=qbrDue(a);if(q!==null&&q<0)x+=5;return x;}
 function badgeFor(rank){return rank===2?'<span class="badge over">red</span>':rank===1?'<span class="badge due">amber</span>':'<span class="badge ok">green</span>';}
 function dot(v){return '<span class="dot '+(v||'')+'"></span>';}
+const HEALTH_STALE=30;
+function healthAge(s){return s.health&&s.health.updated?Math.max(0,Math.floor((Date.now()-Date.parse(s.health.updated))/86400000)):null;}
+function healthSet(s){return !!(s.health&&(s.health.msp||s.health.tech));}
+function healthStale(s){var a=healthAge(s);return healthSet(s)&&a!==null&&a>HEALTH_STALE;}
+function healthUnknown(s){return !healthSet(s)||healthStale(s);}
+function needsAttn(s){return worstSeat(s)===2||gap(s)||healthUnknown(s);}
+function seatColor(s){return healthUnknown(s)?'':['green','amber','red'][worstSeat(s)];}
+function dotFor(s,side){return healthUnknown(s)?'<span class="dot"></span>':dot(s.health[side]);}
+function badgeForSeat(s){return healthUnknown(s)?'<span class="badge due">check-in</span>':badgeFor(worstSeat(s));}
+/* money */
+function seatMRR(s){var n=parseFloat(s.rate);return (s.status!=="ended"&&!isNaN(n))?n:0;}
+function acctMRR(a){return (a.seats||[]).reduce(function(t,s){return t+seatMRR(s);},0);}
+function totalMRR(){return state.accounts.reduce(function(t,a){return t+acctMRR(a);},0);}
+function money(n){return "$"+Math.round(n||0).toLocaleString();}
+function renewalDue(s){return s.renewal?daysTo(s.renewal):null;}
+/* health trend from cadence history */
+function healthSeries(s,kind){var arr=kind==="msp"?(s.mspLog||[]):(s.techLog||[]);var f=kind==="msp"?"satisfaction":"engagement";return arr.filter(function(e){return e[f];}).sort(function(a,b){return a.date<b.date?-1:1;}).map(function(e){return {date:e.date,v:e[f]};});}
+function trendArrow(s){var m=healthSeries(s,"msp");if(m.length<2)return "";var a=RANK[m[m.length-2].v],b=RANK[m[m.length-1].v];return b<a?'<span style="color:var(--green)">▲ improving</span>':b>a?'<span style="color:var(--red)">▼ slipping</span>':'<span class="muted">steady</span>';}
+function trendStrip(s,kind){var ser=healthSeries(s,kind);if(!ser.length)return '<span class="muted xs">no history yet</span>';return ser.slice(-10).map(function(p){return '<span class="tpip '+p.v+'" title="'+fmt(p.date)+'"></span>';}).join('');}
+/* recognition stats */
+function techStats(s){var msp=(s.mspLog||[]);var greens=msp.filter(function(e){return e.satisfaction==="green";}).length;var total=msp.filter(function(e){return e.satisfaction;}).length;
+  var wins=[];msp.forEach(function(e){if(e.wins)wins.push(e.wins);});(s.techLog||[]).forEach(function(e){if(e.recognition)wins.push(e.recognition);});
+  return {score:total?Math.round(greens/total*100):null,greens:greens,total:total,wins:wins,articles:modulesByAuthor(s.tech),tenure:s.started?Math.floor((Date.now()-Date.parse(s.started))/86400000/30):null};}
 
 /* ============ nav ============ */
 var PAGES={dashboard:["Service delivery","Dashboard"],training:["Knowledge base","Templates & articles"],guide:["Reference","Operating guide"],settings:["Configuration","Settings"]};
@@ -329,7 +359,7 @@ function render(){var v=document.getElementById("view");
 function renderDashboard(){
   var accts=state.accounts.slice().sort(function(a,b){return acctAtt(b)-acctAtt(a);});
   var seats=[];accts.forEach(function(a){a.seats.forEach(function(s){seats.push({a:a,s:s});});});
-  var attN=seats.filter(function(x){return worstSeat(x.s)===2||gap(x.s);}).length;
+  var attN=seats.filter(function(x){return needsAttn(x.s);}).length;
   var cadN=seats.filter(function(x){var c=cadDue(x.s);return c!==null&&c<=2;}).length;
   var pulN=seats.filter(function(x){var c=pulseDue(x.s);return c!==null&&c<=1;}).length;
   var kpis=[[accts.length,"Accounts","",""],[seats.length,"Seats","",""],[attN,"Need attention",attN?"alert":"","attention"],[cadN,"Cadence due",cadN?"due":"","cadence"],[pulN,"Pulse due",pulN?"due":"","pulse"]];
@@ -340,9 +370,11 @@ function renderDashboard(){
     '<div id="acctList" class="thinlist">'+buildAcctList()+'</div>';
   var alerts=[];
   seats.forEach(function(x){var s=x.s,a=x.a;
-    if(worstSeat(s)===2)alerts.push(['red',esc(s.tech||'Seat')+' · '+esc(a.name)+' — '+healthReason(s),a.id,s.id]);
+    if(healthUnknown(s))alerts.push(['','— '+esc(s.tech||'Seat')+' · '+esc(a.name)+' — '+healthReason(s),a.id,s.id]);
+    else if(worstSeat(s)===2)alerts.push(['red',esc(s.tech||'Seat')+' · '+esc(a.name)+' — '+healthReason(s),a.id,s.id]);
     else if(gap(s))alerts.push(['amber',esc(s.tech||'Seat')+' · '+esc(a.name)+' — '+healthReason(s),a.id,s.id]);
-    var c=cadDue(s);if(c!==null&&c<0)alerts.push(['amber','Cadence '+(-c)+'d overdue · '+esc(s.tech||'seat')+' ('+esc(a.name)+')',a.id,s.id]);});
+    var c=cadDue(s);if(c!==null&&c<0)alerts.push(['amber','Cadence '+(-c)+'d overdue · '+esc(s.tech||'seat')+' ('+esc(a.name)+')',a.id,s.id]);
+    var rd=renewalDue(s);if(rd!==null&&rd<=60)alerts.push([rd<0?'red':'amber','Renewal '+(rd<0?(-rd)+'d overdue':'in '+rd+'d')+' · '+esc(s.tech||'seat')+' ('+esc(a.name)+')',a.id,s.id]);});
   accts.forEach(function(a){var q=qbrDue(a);if(q!==null&&q<0)alerts.push(['amber','QBR '+(-q)+'d overdue · '+esc(a.name),a.id,null]);});
   var alertHtml='<div class="card"><div class="block-h">Alerts</div>'+(alerts.length?alerts.map(function(al){return '<div class="alert-row" onclick="'+(al[3]?'openSeat(\''+al[2]+'\',\''+al[3]+'\')':'openAccount(\''+al[2]+'\')')+'"><span class="sev '+al[0]+'"></span>'+al[1]+'<span class="chev">›</span></div>';}).join(''):'<div class="muted sm">All clear — nothing needs attention right now.</div>')+'</div>';
   var due=[];
@@ -354,12 +386,32 @@ function renderDashboard(){
     return '<div class="due-row"><span class="sev '+(d[5]<0?'red':'amber')+'"></span><span>'+label+' · '+d[3]+' ('+d[4]+')</span><span class="when">'+when+'</span><button class="btn sm" onclick="'+fn+'(\''+d[1]+'\',\''+d[2]+'\')">Log</button></div>';
   }).join(''):'<div class="muted sm">Nothing due — you\'re on top of the cadences.</div>')+'</div>';
   if(!accts.length)return kpiHtml+'<div class="empty"><b>No accounts yet.</b>Add an MSP to start tracking placements.<br><br><button class="btn p" onclick="openAcctForm()">+ New MSP</button></div>';
-  return kpiHtml+acctSection+alertHtml+dueHtml+ceoPanel(accts);
+  return kpiHtml+acctSection+commercialPanel(accts)+openActionsPanel(accts)+alertHtml+dueHtml+ceoPanel(accts);
+}
+function commercialPanel(accts){
+  var mrr=accts.reduce(function(t,a){return t+acctMRR(a);},0);
+  var billing=0;accts.forEach(function(a){a.seats.forEach(function(s){if(seatMRR(s)>0)billing++;});});
+  var ren=[];accts.forEach(function(a){a.seats.forEach(function(s){var d=renewalDue(s);if(d!==null&&d<=60)ren.push([d,a,s]);});});
+  ren.sort(function(x,y){return x[0]-y[0];});
+  var exp=accts.reduce(function(t,a){return t+((a.expansion||[]).length);},0);
+  return '<div class="card"><div class="block-h">Commercials</div>'+
+    '<div class="ceo-grid" style="margin-top:0"><div class="ceo-stat"><div class="cs-n">'+money(mrr)+'</div><div class="cs-l">Monthly recurring</div></div>'+
+    '<div class="ceo-stat"><div class="cs-n">'+billing+'</div><div class="cs-l">Billing seats</div></div>'+
+    '<div class="ceo-stat"><div class="cs-n'+(ren.length?' r':'')+'">'+ren.length+'</div><div class="cs-l">Renewals ≤60d</div></div></div>'+
+    (ren.length?'<div style="margin-top:10px">'+ren.map(function(r){return '<div class="due-row" onclick="openSeat(\''+r[1].id+'\',\''+r[2].id+'\')"><span class="sev '+(r[0]<0?'red':'amber')+'"></span><span>'+esc(r[2].tech||'seat')+' · '+esc(r[1].name)+'</span><span class="when">'+(r[0]<0?(-r[0])+'d overdue':'in '+r[0]+'d')+'</span><span class="chev">›</span></div>';}).join('')+'</div>':'')+
+    '</div>';
+}
+function openActionsPanel(accts){
+  var items=[];accts.forEach(function(a){a.seats.forEach(function(s){(s.actions||[]).forEach(function(ac){if(!ac.done)items.push([a,s,ac]);});});});
+  if(!items.length)return '';
+  items.sort(function(x,y){var dx=x[2].due||'9999',dy=y[2].due||'9999';return dx<dy?-1:1;});
+  return '<div class="card"><div class="block-h">Open actions ('+items.length+')</div>'+items.map(function(it){var ac=it[2];var od=ac.due&&daysTo(ac.due)<0;return '<div class="due-row" onclick="openSeat(\''+it[0].id+'\',\''+it[1].id+'\')"><span class="sev '+(od?'red':'amber')+'"></span><span>'+esc(ac.text)+(ac.owner?' · '+esc(ac.owner):'')+' <span class="muted xs">('+esc(it[1].tech||'seat')+')</span></span><span class="when">'+(ac.due?(od?(-daysTo(ac.due))+'d over':fmt(ac.due)):'—')+'</span><span class="chev">›</span></div>';}).join('')+'</div>';
 }
 function healthReason(s){
+  if(!healthSet(s))return "no health logged yet — needs a check-in";
+  if(healthStale(s))return "health stale — last set "+healthAge(s)+"d ago, needs a check-in";
   var m=s.health.msp||"",t=s.health.tech||"";var parts=[];
-  if(!m&&!t)parts.push("no health logged yet");
-  else if(gap(s))parts.push("gap — MSP "+(m||"—")+" / Tech "+(t||"—"));
+  if(gap(s))parts.push("gap — MSP "+(m||"—")+" / Tech "+(t||"—"));
   else parts.push("MSP "+(m||"—")+" · Tech "+(t||"—"));
   if(RANK[m]===2)parts.push("MSP unhappy");
   if(RANK[t]===2)parts.push("tech struggling");
@@ -390,8 +442,8 @@ function buildAcctList(){
 }
 function acctRow(a){var w=acctWorst(a);var due=a.seats.some(function(s){var c=cadDue(s);return c!==null&&c<0;})||(qbrDue(a)!==null&&qbrDue(a)<0);
   return '<div class="lrow acct" onclick="openAccount(\''+a.id+'\')"><span class="dot '+['green','amber','red'][w]+'"></span><div class="lmain"><b>'+esc(a.name||"Unnamed")+'</b><span class="lsub">'+a.seats.length+' seat'+(a.seats.length===1?"":"s")+(a.sdm?" · "+esc(a.sdm):"")+'</span></div>'+(due?'<span class="badge due">due</span>':'')+'<span class="chev">›</span></div>';}
-function seatLine(a,s){var w=worstSeat(s);
-  return '<div class="lrow sub" onclick="openSeat(\''+a.id+'\',\''+s.id+'\')"><span class="dot '+['green','amber','red'][w]+'"></span><div class="lmain"><b>'+esc(s.tech||"Unnamed")+(s.title?' · '+esc(s.title):'')+'</b><span class="lsub">'+healthReason(s)+'</span></div><span class="hpips">'+dot(s.health.msp)+'<span class="pl">M</span>'+dot(s.health.tech)+'<span class="pl">T</span></span><span class="chev">›</span></div>';}
+function seatLine(a,s){
+  return '<div class="lrow sub" onclick="openSeat(\''+a.id+'\',\''+s.id+'\')"><span class="dot '+seatColor(s)+'"></span><div class="lmain"><b>'+esc(s.tech||"Unnamed")+(s.title?' · '+esc(s.title):'')+'</b><span class="lsub">'+healthReason(s)+'</span></div><span class="hpips">'+dotFor(s,'msp')+'<span class="pl">M</span>'+dotFor(s,'tech')+'<span class="pl">T</span></span><span class="chev">›</span></div>';}
 function ceoPanel(accts){
   var seats=[];accts.forEach(function(a){(a.seats||[]).forEach(function(s){seats.push(s);});});
   if(!seats.length)return '';
@@ -401,7 +453,7 @@ function ceoPanel(accts){
   var disc=Math.round((cadAdh+pAdh+qAdh)/3);
   var g=seats.filter(function(s){return worstSeat(s)===0;}).length,am=seats.filter(function(s){return worstSeat(s)===1;}).length,r=seats.filter(function(s){return worstSeat(s)===2;}).length;
   var ready=Math.round(seats.reduce(function(t,s){return t+readiness(s);},0)/seats.length);
-  var risk=seats.filter(function(s){return worstSeat(s)===2||gap(s)||s.health.tech==="red";}).length;
+  var risk=seats.filter(function(s){return worstSeat(s)===2||gap(s)||s.health.tech==="red"||healthUnknown(s);}).length;
   var exp=accts.reduce(function(t,a){return t+((a.expansion||[]).length);},0);
   var tone=function(p){return p>=90?'green':p>=70?'amber':'red';};
   var adh=function(l,p){return '<div style="margin-top:10px"><div class="row" style="justify-content:space-between"><span class="muted xs" style="text-transform:uppercase;letter-spacing:.08em">'+l+'</span><span class="mono" style="font-weight:700;color:var(--'+tone(p)+')">'+p+'%</span></div><div class="bar" style="margin-top:4px"><i style="width:'+p+'%;background:var(--'+tone(p)+')"></i></div></div>';};
@@ -453,7 +505,7 @@ function acctDetail(a){
     '<button class="btn ghost sm" onclick="showPanel(false)">‹ Board</button>'+
     '<button class="btn sm" onclick="openAcctForm(\''+a.id+'\')">Edit</button></div>'+
     '<h2 style="margin-top:8px">'+esc(a.name||'Untitled MSP')+'</h2>'+
-    '<div class="muted sm">SDM '+esc(a.sdm||'—')+' · since '+fmt(a.started)+' · account health '+["green","amber","red"][acctWorst(a)]+'</div></div></header>'+
+    '<div class="muted sm">SDM '+esc(a.sdm||'—')+' · since '+fmt(a.started)+' · account health '+["green","amber","red"][acctWorst(a)]+(acctMRR(a)?' · '+money(acctMRR(a))+'/mo':'')+'</div></div></header>'+
   '<div class="pbody">'+
   '<div class="block"><h4>Seats ('+a.seats.length+')</h4>'+
     (a.seats.length?a.seats.map(s=>seatRow(a,s)).join(''):'<div class="muted sm">No seats yet.</div>')+
@@ -477,9 +529,9 @@ function acctDetail(a){
 }
 function seatRow(a,s){
   const c=cadDue(s);const cad=c!==null&&c<0?'<span class="badge over">cadence overdue</span>':c!==null&&c<=2?'<span class="badge due">cadence due</span>':'';
-  return '<div class="card pcard spine s-'+['green','amber','red'][worstSeat(s)]+'" style="margin:8px 0;box-shadow:none" onclick="openSeat(\''+a.id+'\',\''+s.id+'\')">'+
-    '<div class="pc-top"><div><h3 style="font-size:15px">'+esc(s.tech||'Unnamed seat')+'</h3><div class="pc-sub">'+(s.title?esc(s.title)+' · ':'')+esc(s.band||'—')+'</div></div>'+badgeFor(worstSeat(s))+'</div>'+
-    '<div class="dots"><span class="hd">'+dot(s.health.msp)+'MSP</span><span class="hd">'+dot(s.health.tech)+'Tech</span>'+(gap(s)?'<span class="badge gap">gap</span>':'')+cad+'</div>'+
+  return '<div class="card pcard spine s-'+(seatColor(s)||'unknown')+'" style="margin:8px 0;box-shadow:none" onclick="openSeat(\''+a.id+'\',\''+s.id+'\')">'+
+    '<div class="pc-top"><div><h3 style="font-size:15px">'+esc(s.tech||'Unnamed seat')+'</h3><div class="pc-sub">'+(s.title?esc(s.title)+' · ':'')+esc(s.band||'—')+(seatMRR(s)?' · '+money(seatMRR(s))+'/mo':'')+'</div></div>'+badgeForSeat(s)+'</div>'+
+    '<div class="dots"><span class="hd">'+dotFor(s,'msp')+'MSP</span><span class="hd">'+dotFor(s,'tech')+'Tech</span>'+(gap(s)?'<span class="badge gap">gap</span>':'')+cad+(trendArrow(s)?'<span class="xs">'+trendArrow(s)+'</span>':'')+'</div>'+
     '<div class="pc-meta"><span>continuity '+readiness(s)+'%</span><span>since '+fmt(s.started)+'</span></div></div>';
 }
 
@@ -499,7 +551,24 @@ function seatDetail(a,s){
     '<label class="fld">Technician engagement</label>'+segH("tech")+
     (gap(s)?'<div class="gapwarn"><b>Gap.</b> One side is happier than the other — the most common early warning. Find out why before it widens.</div>':'')+
     '<div class="hint"><b>Signs the tech is struggling (the MSP won\'t report these):</b> going quiet, shorter answers, less initiative; working past hours; stopped asking questions; unnamed friction.</div>'+
-    (s.health.updated?'<div class="xs muted" style="margin-top:8px">Updated '+fmt(s.health.updated)+'</div>':'')+'</div>'+
+    (s.health.updated?'<div class="xs muted" style="margin-top:8px">Updated '+fmt(s.health.updated)+(healthStale(s)?' · stale, log a fresh check-in':''):'<div class="xs muted" style="margin-top:8px">No health logged yet')+'</div>'+
+    '<div style="margin-top:10px"><div class="muted xs" style="text-transform:uppercase;letter-spacing:.08em">MSP feedback trend</div><div class="trow">'+trendStrip(s,"msp")+'</div>'+
+    '<div class="muted xs" style="text-transform:uppercase;letter-spacing:.08em;margin-top:6px">Engagement trend</div><div class="trow">'+trendStrip(s,"tech")+'</div></div>'+
+    ((seatMRR(s)||s.renewal)?'<div class="kv" style="margin-top:10px"><b>Commercials</b><span>'+(seatMRR(s)?money(seatMRR(s))+'/mo':'no rate')+(s.renewal?' · renews '+fmt(s.renewal)+(renewalDue(s)!==null&&renewalDue(s)<=60?' ('+(renewalDue(s)<0?'overdue':'in '+renewalDue(s)+'d')+')':''):'')+'</span></div>':'')+'</div>'+
+  '<div class="block"><h4>Open actions</h4>'+
+    '<div class="row" style="gap:6px;margin-bottom:8px"><input id="actText" placeholder="Action…" style="flex:2;min-width:120px"><input id="actOwner" placeholder="Owner" style="flex:1;min-width:80px"><input id="actDue" type="date" style="flex:1;min-width:120px"></div>'+
+    '<button class="btn p sm" onclick="addAction(\''+a.id+'\',\''+s.id+'\')">Add action</button>'+
+    (function(){var open=(s.actions||[]).filter(function(x){return !x.done;});var done=(s.actions||[]).filter(function(x){return x.done;});
+      var render=function(list){return list.map(function(ac){var od=ac.due&&daysTo(ac.due)<0&&!ac.done;return '<div class="logitem"><div class="row" style="justify-content:space-between;align-items:flex-start"><label class="actl"><input type="checkbox"'+(ac.done?' checked':'')+' onchange="toggleAction(\''+a.id+'\',\''+s.id+'\',\''+ac.id+'\')"><span'+(ac.done?' style="text-decoration:line-through;color:var(--faint)"':'')+'>'+esc(ac.text)+'</span></label><button class="btn sm ghost" style="padding:2px 8px;color:#ffb4b4" onclick="delAction(\''+a.id+'\',\''+s.id+'\',\''+ac.id+'\')">Del</button></div><div class="muted xs" style="margin-top:2px">'+(ac.owner?esc(ac.owner):'unassigned')+(ac.due?' · due '+fmt(ac.due)+(od?' (overdue)':''):'')+'</div></div>';}).join('');};
+      return '<div style="margin-top:10px">'+(open.length?render(open):'<div class="muted sm">No open actions.</div>')+(done.length?'<div class="muted xs" style="margin-top:10px;text-transform:uppercase;letter-spacing:.08em">Done</div>'+render(done):'')+'</div>';})()+'</div>'+
+  '<div class="block"><h4>Recognition — give back to '+esc(s.tech||'this tech')+'</h4>'+
+    (function(){var t=techStats(s);return '<div class="ceo-grid" style="margin-top:0">'+
+      '<div class="ceo-stat"><div class="cs-n">'+(t.score!==null?t.score+'%':'—')+'</div><div class="cs-l">MSP positive</div></div>'+
+      '<div class="ceo-stat"><div class="cs-n">'+(t.greens+t.wins.length)+'</div><div class="cs-l">Kudos &amp; wins</div></div>'+
+      '<div class="ceo-stat"><div class="cs-n">'+t.articles.length+'</div><div class="cs-l">KB articles</div></div></div>'+
+      (t.wins.length?'<div style="margin-top:10px"><div class="muted xs" style="text-transform:uppercase;letter-spacing:.08em">Highlights</div>'+t.wins.slice(-4).map(function(w){return '<div class="logitem">'+esc(w)+'</div>';}).join('')+'</div>':'')+
+      '<div class="hint" style="margin-top:8px">A recognition note shares only the good — wins, articles, growth, positive feedback. It never shows internal health flags. Use it in a growth chat or send it to celebrate.</div>'+
+      '<div class="row" style="margin-top:8px"><button class="btn p sm" onclick="recognitionDoc(\''+a.id+'\',\''+s.id+'\',\'print\')">Recognition note (PDF)</button><button class="btn sm" onclick="recognitionDoc(\''+a.id+'\',\''+s.id+'\',\'word\')">Word</button><button class="btn sm" onclick="recognitionDoc(\''+a.id+'\',\''+s.id+'\',\'send\')">Send to tech</button></div>';})()+'</div>'+
   '<div class="block"><h4>MSP cadence — feedback on the tech</h4>'+
     '<div class="kv"><b>'+freqLabel(s.cadence.freq)+' · last '+(s.cadence.last?fmt(s.cadence.last):'—')+'</b><span>'+(s.cadence.next?'next '+fmt(s.cadence.next)+(c!==null&&c<0?' (overdue)':''):'')+'</span></div>'+
     '<button class="btn p sm" style="margin:8px 0" onclick="openMspForm(\''+a.id+'\',\''+s.id+'\')">Log MSP cadence</button>'+
@@ -547,6 +616,21 @@ function markQBR(aid){const a=getA(aid);a.qbr.last=today();a.qbr.next=addDays(to
 function unmarkQBR(aid){const a=getA(aid);if(!confirm("Undo the last QBR mark? (The dates stay editable below.)"))return;a.qbr.last="";save();reAcct(aid);toast("Undone");}
 function setQbr(aid,field,v){const a=getA(aid);a.qbr[field]=v;save();reAcct(aid);}
 function clearGrowth(aid,sid){const s=getS(getA(aid),sid);if(!confirm("Clear the last growth-conversation date?"))return;s.growth.lastConvo="";save();reSeat(aid,sid);toast("Cleared");}
+function addAction(aid,sid){var t=((document.getElementById("actText")||{}).value||"").trim();if(!t)return;var s=getS(getA(aid),sid);s.actions=s.actions||[];s.actions.push({id:uid("ac"),text:t,owner:((document.getElementById("actOwner")||{}).value||"").trim(),due:((document.getElementById("actDue")||{}).value||""),done:false,created:today()});save();reSeat(aid,sid);toast("Action added");}
+function toggleAction(aid,sid,id){var s=getS(getA(aid),sid);var ac=(s.actions||[]).filter(function(x){return x.id===id;})[0];if(ac){ac.done=!ac.done;ac.doneAt=ac.done?today():"";}save();reSeat(aid,sid);}
+function delAction(aid,sid,id){if(!confirm("Delete this action?"))return;var s=getS(getA(aid),sid);s.actions=(s.actions||[]).filter(function(x){return x.id!==id;});save();reSeat(aid,sid);}
+function recognitionDoc(aid,sid,mode){var a=getA(aid),s=getS(a,sid);var t=techStats(s);
+  var title="Recognition \u2014 "+(s.tech||"our technician");
+  var sub=(s.title?s.title+" \u00b7 ":"")+(a.name||"")+(t.tenure!=null?" \u00b7 "+t.tenure+" month"+(t.tenure===1?"":"s")+" with us":"");
+  var secs=[["Thank you","Thank you for the work you do for "+(a.name||"the client")+". Here is some of what stood out."]];
+  if(t.tenure!=null)secs.push(["Tenure",t.tenure+" months embedded with "+(a.name||"the account")]);
+  if(t.greens>0)secs.push(["Positive client feedback",t.greens+" positive check-in"+(t.greens===1?"":"s")+" from the client"]);
+  if(t.articles.length)secs.push(["Knowledge you have shared",t.articles.length+" KB article"+(t.articles.length===1?"":"s")+": "+t.articles.map(function(m){return m.title;}).join(", ")]);
+  if(t.wins.length)secs.push(["Highlights & wins",t.wins.join("\n")]);
+  if(s.growth&&s.growth.goal)secs.push(["Growth goal",s.growth.goal]);
+  secs.push(["From your service delivery manager","Keep it up \u2014 we see it, and the client does too."]);
+  var html=docShell(title,sub,secs);var fname="Recognition_"+(s.tech||"tech").replace(/\s+/g,"-")+"_"+today();
+  if(mode==="word")downloadHtmlDoc(fname,html);else if(mode==="print")openPrint(html);else{downloadHtmlDoc(fname,html);emailDoc("",title,"Hi "+(s.tech||"")+",\n\nA small note of recognition \u2014 the document has downloaded, please find it attached.\n\nThank you,\n"+((state.me&&state.me.name)||"DedicatusIT"));}}
 function editSLog(aid,sid,idx){const s=getS(getA(aid),sid);const l=s.log[idx];if(!l)return;const v=window.prompt("Edit note:",l.note);if(v===null)return;l.note=v;save();reSeat(aid,sid);}
 function delSLog(aid,sid,idx){if(!confirm("Delete this log entry?"))return;const s=getS(getA(aid),sid);s.log.splice(idx,1);save();reSeat(aid,sid);}
 function editALog(aid,idx){const a=getA(aid);const l=a.log[idx];if(!l)return;const v=window.prompt("Edit note:",l.note);if(v===null)return;l.note=v;save();reAcct(aid);}
@@ -581,11 +665,13 @@ function openSeatForm(aid,sid){const a=getA(aid);const s=sid?getS(a,sid):blankSe
    '<div class="muted sm" style="margin-top:4px">'+esc(a.name)+'</div></div></header><div class="pbody">'+
    fieldHTML("Technician (name)","tech",s.tech)+fieldHTML("Title / role","title",s.title)+fieldHTML("Band / level","band",s.band)+
    '<label class="fld">Start date</label><input id="f_started" type="date" value="'+(s.started||'')+'">'+
+   '<label class="fld">Monthly rate (USD)</label><input id="f_rate" type="number" placeholder="e.g. 4500" value="'+esc(s.rate||'')+'">'+
+   '<label class="fld">Renewal date</label><input id="f_renewal" type="date" value="'+(s.renewal||'')+'">'+
    (function(){var pr=["7","14","21","30"];var fv=String(s.cadence.freq||14);var isC=pr.indexOf(fv)<0;return '<label class="fld">MSP cadence frequency</label><select id="f_freqsel">'+[["7","Weekly"],["14","Bi-weekly"],["21","Every 3 weeks"],["30","Monthly"],["custom","Custom…"]].map(function(o){var sel=(o[0]==="custom"?isC:(o[0]===fv&&!isC))?' selected':'';return '<option value="'+o[0]+'"'+sel+'>'+o[1]+'</option>';}).join('')+'</select>'+'<label class="fld">Custom days (only if Custom above)</label><input id="f_freqcustom" type="number" placeholder="e.g. 10" value="'+(isC?fv:'')+'">';})()+
    '<button class="btn p full" style="margin-top:16px" onclick="saveSeat(\''+aid+'\',\''+(sid||'')+'\')">'+(isNew?'Add seat':'Save')+'</button></div>';
   showPanel(true);}
 function saveSeat(aid,sid){const g=k=>document.getElementById("f_"+k).value.trim();const a=getA(aid);let s=sid?getS(a,sid):blankSeat();
-  s.tech=g("tech");s.title=g("title");s.band=g("band");s.started=g("started");var fsel=document.getElementById("f_freqsel");var fc=document.getElementById("f_freqcustom");var fvv=fsel?fsel.value:"14";s.cadence.freq=(fvv==="custom")?(parseInt(fc&&fc.value)||14):(parseInt(fvv)||14);recomputeCad(s);
+  s.tech=g("tech");s.title=g("title");s.band=g("band");s.started=g("started");s.rate=g("rate");s.renewal=g("renewal");var fsel=document.getElementById("f_freqsel");var fc=document.getElementById("f_freqcustom");var fvv=fsel?fsel.value:"14";s.cadence.freq=(fvv==="custom")?(parseInt(fc&&fc.value)||14):(parseInt(fvv)||14);recomputeCad(s);
   if(!sid)a.seats.push(s);save();openSeat(aid,s.id);}
 
 function openForm(){openAcctForm();}  /* FAB adds an MSP */
