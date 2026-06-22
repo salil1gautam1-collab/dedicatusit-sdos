@@ -198,6 +198,10 @@ a.link{color:var(--accent);text-decoration:none}
 .tpip.green{background:var(--green)}.tpip.amber{background:var(--amber)}.tpip.red{background:var(--red)}
 .actl{display:flex;align-items:center;gap:8px;flex:1;min-width:0;font-size:13px}
 .actl input{width:16px;height:16px;flex:0 0 auto}
+
+.info{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1px solid var(--line);color:var(--muted);font-size:9px;font-style:italic;font-weight:700;font-family:var(--ui);cursor:pointer;vertical-align:middle;margin-left:5px;text-transform:none;letter-spacing:0}
+.info:hover{border-color:var(--accent);color:var(--accent)}
+.fldhint{font-size:11.5px;color:var(--muted);line-height:1.45;margin:4px 0 2px;border-left:2px solid var(--accent-deep);padding-left:9px}
 </style>
 </head>
 <body>
@@ -242,9 +246,9 @@ const SECTIONS=[["systems","System & client information","Environments, key syst
  ["contacts","Key contacts & relationships","Who to talk to for what — MSP side and client side; relief person"],
  ["open","Open threads / in-flight","Projects underway, things mid-resolution"]];
 const STALE_DAYS=90;
-const MSPQ=[["attendees","Who was on the call?"],["metrics","Delivery metrics — tickets handled, SLA %, CSAT, escalations"],["performance","How is the tech performing?"],["wins","Wins / what went well"],["friction","Friction or concerns"],["decisions","Decisions made"],["actions","Actions — owner · due date"],["risks","Risks / watch items"],["expansion","Expansion signals / more they'd hand over"]];
-const TECHQ=[["workload","Is the workload sustainable?"],["morale","Morale / energy"],["blockers","Blockers / what they need"],["growth","Growing — toward what?"],["recognition","Wins worth recognising"],["actions","Actions — owner · due date"],["unsaid","Anything they're not saying to the MSP?"]];
-const QBRQ=[["attendees","Who attended"],["summary","Executive summary"],["metrics","Delivery metrics (tickets, SLA %, CSAT, escalations)"],["wins","Wins this quarter"],["issues","Issues & friction"],["decisions","Decisions"],["actions","Actions — owner · due date"],["roadmap","Roadmap / next quarter"],["expansion","Expansion opportunities"]];
+const MSPQ=[["attendees","Who was on the call?","Names and roles on the call — MSP side and ours. Tracks who's engaged in the relationship."],["metrics","Delivery metrics — tickets handled, SLA %, CSAT, escalations","The hard numbers this period: tickets handled, SLA % met, CSAT score, and any escalations. Facts, not impressions."],["performance","How is the tech performing?","The MSP's view of the tech — speed, quality, communication, reliability."],["wins","Wins / what went well","Specific good moments — name them so you can recognise the tech and reinforce your value."],["friction","Friction or concerns","Anything rubbing: complaints, slow areas, unmet expectations — capture it even if said lightly."],["decisions","Decisions made","Anything you agreed or settled on the call, so it's on the record."],["actions","Actions — owner · due date","Next steps: what, who owns it, and by when. These feed the action tracker."],["risks","Risks / watch items","Anything that could hurt the placement or relationship if ignored — to revisit next time. E.g. workload creeping, a quiet complaint, a budget question, a key contact leaving."],["expansion","Expansion signals / more they'd hand over","Signs they'd give you more work: 'could your person also…', 'we're swamped in X'. Your earliest growth signal — it feeds the QBR and the stickiness read."]];
+const TECHQ=[["workload","Is the workload sustainable?","Is the load healthy or heading toward burnout? Hours, volume, pressure."],["morale","Morale / energy","Their energy and mood — motivated, flat, or frustrated?"],["blockers","Blockers / what they need","What's in their way, or what they need from us to do the job well."],["growth","Growing — toward what?","What they're learning or want to grow toward — feeds their development plan."],["recognition","Wins worth recognising","Things worth calling out — used to thank and recognise them (and in the recognition note)."],["actions","Actions — owner · due date","Next steps for you or the tech, with owner and due date."],["unsaid","Anything they're not saying to the MSP?","The quiet signal — anything they're holding back from the client. This is what protects the placement. Stays internal, never shown to the MSP or the tech."]];
+const QBRQ=[["attendees","Who attended","Who joined the review — both sides."],["summary","Executive summary","The headline of the quarter in a few lines — the story you want the client to remember."],["metrics","Delivery metrics (tickets, SLA %, CSAT, escalations)","The quarter's delivery numbers, pulled together from your cadences."],["wins","Wins this quarter","The quarter's highlights — auto-gathered from cadence wins; trim to the strongest."],["issues","Issues & friction","Problems over the quarter and how they were handled — shows you stay on top of things."],["decisions","Decisions","Key decisions made this quarter."],["actions","Actions — owner · due date","Agreed next steps with owners and due dates."],["roadmap","Roadmap / next quarter","What's planned next — where the relationship goes from here."],["expansion","Expansion opportunities","Where you could do more for this client — the growth conversation."]];
 const WEEKLY_KT=["What did your week's routine look like — anything new a stand-in would want to know?","Hit any new issue or quirk? How did you sort it?","Anything change on the client's systems, access, or vendors?","Anything in flight right now that someone should pick up if you were off next week?"];
 const MONTHLY_KT=["Your systems & client info — anything new since last month (systems, access, vendors, sites)?","Your day-to-day routine — still accurate? what would you add?","Any recurring issue or workaround worth writing down so you're not the only one who knows it?","Did you do anything this month that isn't written down but a stand-in would need?","Any new key contacts, or changed responsibilities?","What's in flight right now?"];
 function secAge(sec){if(!sec||!sec.updated)return null;return Math.round((new Date(today())-new Date(sec.updated))/86400000);}
@@ -318,6 +322,8 @@ function qbrDue(a){return a.qbr.next?daysTo(a.qbr.next):null;}
 function acctAtt(a){let x=a.seats.reduce((t,s)=>t+seatAtt(s),0);const q=qbrDue(a);if(q!==null&&q<0)x+=5;return x;}
 function badgeFor(rank){return rank===2?'<span class="badge over">red</span>':rank===1?'<span class="badge due">amber</span>':'<span class="badge ok">green</span>';}
 function dot(v){return '<span class="dot '+(v||'')+'"></span>';}
+function fldHint(text,hint){return '<label class="fld">'+esc(text)+(hint?' <span class="info" title="'+esc(hint)+'" onclick="toggleHint(this)">i</span>':'')+'</label>'+(hint?'<div class="fldhint" style="display:none">'+esc(hint)+'</div>':'');}
+function toggleHint(el){var lab=el.parentNode;var h=lab.nextElementSibling;if(h&&h.classList&&h.classList.contains('fldhint')){h.style.display=(h.style.display==='none'?'block':'none');}}
 const HEALTH_STALE=30;
 function healthAge(s){return s.health&&s.health.updated?Math.max(0,Math.floor((Date.now()-Date.parse(s.health.updated))/86400000)):null;}
 function healthSet(s){return !!(s.health&&(s.health.msp||s.health.tech));}
@@ -807,7 +813,7 @@ function cadForm(aid,sid,kind,editId){var a=getA(aid),s=getS(a,sid);var qs=kind=
     '<div class="muted sm" style="margin-top:4px">'+esc(s.tech||'seat')+(s.title?' · '+esc(s.title):'')+' · '+esc(a.name||'')+'</div></div></header><div class="pbody">'+
     '<label class="fld">Date <span class="muted xs">(any date — log a past meeting here)</span></label><input id="cf_date" type="date" value="'+(ex?ex.date:today())+'">'+
     '<label class="fld">'+hlab+'</label><div class="seg" id="cf_health">'+HEALTH.map(function(v){return '<button type="button" class="'+v[0]+(curH===v?' on':'')+'" data-v="'+v+'" onclick="cfPick(this)">'+v[0].toUpperCase()+v.slice(1)+'</button>';}).join('')+'</div>'+
-    qs.map(function(q){return '<label class="fld">'+esc(q[1])+'</label><textarea id="cf_'+q[0]+'">'+(ex&&ex[q[0]]?esc(ex[q[0]]):'')+'</textarea>';}).join('')+
+    qs.map(function(q){return fldHint(q[1],q[2])+'<textarea id="cf_'+q[0]+'">'+(ex&&ex[q[0]]?esc(ex[q[0]]):'')+'</textarea>';}).join('')+
     '<button class="btn p full" style="margin-top:14px" onclick="saveCad(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+(editId||'')+'\')">'+(ex?"Save changes":"Save "+(kind==="msp"?"MSP cadence":"tech pulse"))+'</button></div>';
   document.getElementById("panelInner").innerHTML=html;showPanel(true);document.getElementById("panel").scrollTo(0,0);}
 function saveCad(aid,sid,kind,editId){var a=getA(aid),s=getS(a,sid);var g=function(k){var e=document.getElementById("cf_"+k);return e?e.value.trim():"";};
@@ -1022,7 +1028,7 @@ function qbrForm(aid,editId){
     '<div class="row"><div style="flex:1;min-width:130px"><label class="fld">Period from</label><input id="qf_from" type="date" value="'+esc(pFrom)+'"></div>'+
     '<div style="flex:1;min-width:130px"><label class="fld">Period to</label><input id="qf_to" type="date" value="'+esc(pTo)+'"></div></div>'+
     '<label class="fld">Overall satisfaction</label><div class="seg" id="qf_health">'+HEALTH.map(function(v){return '<button type="button" class="'+v[0]+(curH===v?' on':'')+'" data-v="'+v+'" onclick="cfPick(this)">'+v[0].toUpperCase()+v.slice(1)+'</button>';}).join('')+'</div>'+
-    QBRQ.map(function(x){return '<label class="fld">'+esc(x[1])+'</label><textarea id="qf_'+x[0]+'" style="min-height:70px">'+esc(val(x[0]))+'</textarea>';}).join('')+
+    QBRQ.map(function(x){return fldHint(x[1],x[2])+'<textarea id="qf_'+x[0]+'" style="min-height:70px">'+esc(val(x[0]))+'</textarea>';}).join('')+
     '<button class="btn p full" style="margin-top:14px" onclick="saveQbr(\''+aid+'\',\''+(editId||'')+'\')">'+(ex?"Save changes":"Save QBR")+'</button></div>';
   document.getElementById("panelInner").innerHTML=html;showPanel(true);document.getElementById("panel").scrollTo(0,0);}
 function saveQbr(aid,editId){
