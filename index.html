@@ -794,7 +794,9 @@ function renderCadList(aid,sid,kind,entries,q,m){
   return list.map(function(e){return '<div class="logitem"><div class="row" style="justify-content:space-between;align-items:center"><span class="d">'+fmt(e.date)+(e[hl]?' · '+e[hl]:'')+'</span><span>'+
     '<button class="btn sm ghost" style="padding:2px 7px" onclick="cadDoc(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\',\'print\')">PDF</button> '+
     '<button class="btn sm ghost" style="padding:2px 7px" onclick="cadDoc(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\',\'word\')">Word</button> '+
-    '<button class="btn sm ghost" style="padding:2px 7px" onclick="cadDoc(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\',\'send\')">Send</button> '+
+    '<button class="btn sm ghost" style="padding:2px 7px" onclick="cadDoc(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\',\'send\')">Doc</button> '+
+    '<button class="btn sm" style="padding:2px 7px" onclick="'+(kind==="msp"?'clientEmail':'techNote')+'(\''+aid+'\',\''+sid+'\',\''+e.id+'\',\'email\')">'+(kind==="msp"?'Client email':'Tech note')+'</button> '+
+    '<button class="btn sm ghost" style="padding:2px 7px" onclick="'+(kind==="msp"?'clientEmail':'techNote')+'(\''+aid+'\',\''+sid+'\',\''+e.id+'\',\'copy\')">Copy</button> '+
     '<button class="btn sm ghost" style="padding:2px 7px" onclick="editCad(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\')">Edit</button> '+
     '<button class="btn sm ghost" style="padding:2px 7px;color:#ffb4b4" onclick="delCad(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\')">Del</button></span></div>'+
     qs.map(function(x){return e[x[0]]?'<div style="margin-top:5px"><span class="muted xs">'+esc(x[1])+'</span><br>'+esc(e[x[0]])+'</div>':'';}).join('')+'</div>';}).join('');
@@ -814,17 +816,19 @@ function cadForm(aid,sid,kind,editId){var a=getA(aid),s=getS(a,sid);var qs=kind=
     '<label class="fld">Date <span class="muted xs">(any date — log a past meeting here)</span></label><input id="cf_date" type="date" value="'+(ex?ex.date:today())+'">'+
     '<label class="fld">'+hlab+'</label><div class="seg" id="cf_health">'+HEALTH.map(function(v){return '<button type="button" class="'+v[0]+(curH===v?' on':'')+'" data-v="'+v+'" onclick="cfPick(this)">'+v[0].toUpperCase()+v.slice(1)+'</button>';}).join('')+'</div>'+
     qs.map(function(q){return fldHint(q[1],q[2])+'<textarea id="cf_'+q[0]+'">'+(ex&&ex[q[0]]?esc(ex[q[0]]):'')+'</textarea>';}).join('')+
+    fldHint("SDM private notes","Internal only. Your own read — hunches, commercial angles, things to watch. NEVER appears in any client or tech email or document.")+'<textarea id="cf_private" style="border-color:#5e4f1c">'+(ex&&ex.privateNote?esc(ex.privateNote):'')+'</textarea>'+
     '<button class="btn p full" style="margin-top:14px" onclick="saveCad(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+(editId||'')+'\')">'+(ex?"Save changes":"Save "+(kind==="msp"?"MSP cadence":"tech pulse"))+'</button></div>';
   document.getElementById("panelInner").innerHTML=html;showPanel(true);document.getElementById("panel").scrollTo(0,0);}
 function saveCad(aid,sid,kind,editId){var a=getA(aid),s=getS(a,sid);var g=function(k){var e=document.getElementById("cf_"+k);return e?e.value.trim():"";};
   var sel=document.querySelector("#cf_health button.on");var hv=sel?sel.getAttribute("data-v"):"";var date=g("date")||today();
   var qs=kind==="msp"?MSPQ:TECHQ;var arr=kind==="msp"?s.mspLog:s.techLog;
   var entry=editId?(arr.filter(function(x){return x.id===editId;})[0]||{id:uid("c")}):{id:uid("c")};
-  entry.date=date;qs.forEach(function(q){entry[q[0]]=g(q[0]);});
+  entry.date=date;qs.forEach(function(q){entry[q[0]]=g(q[0]);});entry.privateNote=g("private");
   if(kind==="msp")entry.satisfaction=hv;else entry.engagement=hv;
   if(!editId)arr.push(entry);
   if(hv){if(kind==="msp")s.health.msp=hv;else s.health.tech=hv;s.health.updated=date;}
   if(kind==="msp")recomputeCad(s);else recomputePulse(s);
+  if(!editId&&kind==="msp"&&entry.expansion){a.expansion=a.expansion||[];a.expansion.push({id:uid("e"),date:date,note:entry.expansion,stage:"signal",source:s.tech||"cadence"});}
   if(!editId)s.log.push({date:date,type:kind==="msp"?"MSP cadence":"tech pulse",note:"Logged."});
   save();openSeat(aid,sid);toast(editId?"Updated":(kind==="msp"?"MSP cadence saved":"Tech pulse saved"));}
 /* ---- training library ---- */
@@ -1000,6 +1004,48 @@ function cadDoc(aid,sid,kind,id,mode){
   else if(mode==="print")openPrint(html);
   else{var subj=title+" ("+fmt(e.date)+")";var body="Hi,\n\nPlease find the "+(kind==="msp"?"cadence":"pulse")+" summary for "+(s.tech||"the tech")+" at "+(a.name||"")+", dated "+fmt(e.date)+".\n\n(The document has downloaded — attach it to this email.)\n\nThanks,\n"+((state.me&&state.me.name)||"DedicatusIT");downloadHtmlDoc(fname,html);emailDoc("",subj,body);}
 }
+function satWord(v){return v==="green"?"Positive / on track":v==="amber"?"Steady, a few things to watch":v==="red"?"Needs attention":"On track";}
+function bullets(text){return (text||"").split(/\n+/).map(function(l){return l.trim();}).filter(Boolean).map(function(l){return "- "+l.replace(/^[-•*]\s*/,"");}).join("\n");}
+/* CLIENT EMAIL — from an MSP cadence. Strips: risks, expansion note, private notes. */
+function clientEmail(aid,sid,id,mode){
+  var a=getA(aid),s=getS(a,sid);var e=(s.mspLog||[]).filter(function(x){return x.id===id;})[0];if(!e)return;
+  var me=(state.me&&state.me.name)||"";
+  var subj=(a.name||"Client")+" & DedicatusIT Cadence Summary – "+(s.tech||"our technician")+" – "+fmt(e.date);
+  var L=[];
+  L.push("Hi "+(e.attendees?e.attendees.replace(/\s*,\s*/g," and "):"team")+",","");
+  L.push("Thank you for taking the time to meet with us for our service delivery cadence. It was a productive conversation, and we appreciate the partnership.","");
+  L.push("Here's a summary of what we covered:","");
+  L.push("Overall: "+satWord(e.satisfaction),"");
+  if(e.performance){L.push("Performance:",bullets(e.performance),"");}
+  if(e.wins){L.push("Wins / Highlights:",bullets(e.wins),"");}
+  L.push("Concerns / Friction:",(e.friction&&!/^\s*(none|n\/?a|nothing)\b/i.test(e.friction))?bullets(e.friction):"- None raised.","");
+  if(e.decisions){L.push("Discussion:",bullets(e.decisions),"");}
+  L.push("Development:","- We're continuing to invest in "+(s.tech?s.tech.split(" ")[0]:"the team's")+"'s growth so they keep adding value to your team.","");
+  L.push("Thank you again for your feedback and partnership. We appreciate the opportunity to support your team and will continue to ensure "+(s.tech?s.tech.split(" ")[0]:"the team")+"'s success and value to your organization.","","Best regards,",me||"[Your name]","DedicatusIT");
+  var body=L.join("\n");
+  if(mode==="copy"){copyText(body);toast("Client email copied");}else emailDoc("",subj,body);
+}
+/* TECH NOTE — from a tech pulse. Recognition + growth + relayed MSP praise. NEVER includes workload/morale/blockers/unsaid/private. */
+function techNote(aid,sid,id,mode){
+  var a=getA(aid),s=getS(a,sid);var e=(s.techLog||[]).filter(function(x){return x.id===id;})[0];if(!e)return;
+  var me=(state.me&&state.me.name)||"";var first=s.tech?s.tech.split(" ")[0]:"there";
+  // genuine MSP praise: latest MSP cadence wins/performance for this seat
+  var msp=(s.mspLog||[]).slice().sort(function(x,y){return x.date<y.date?1:-1;})[0];
+  var praise=msp?((msp.wins||"")+(msp.performance?(msp.wins?" ":"")+msp.performance:"")).trim():"";
+  var subj="A note from DedicatusIT – "+(s.tech||"")+" – "+fmt(e.date);
+  var L=[];
+  L.push("Hi "+first+",","");
+  L.push("Thanks for the catch-up — wanted to put a few things in writing.","");
+  if(praise){L.push((a.name||"The client")+" gave really positive feedback this period — they specifically called out your work:","- "+praise.replace(/\n+/g," "),"");}
+  else{L.push("The feedback on your work continues to be positive — thank you for the way you show up for "+(a.name||"the client")+".","");}
+  if(e.recognition){L.push("From our side too:",bullets(e.recognition),"");}
+  if(e.growth){L.push("On your growth — we're backing you here, and we'll keep investing in it:",bullets(e.growth),"");}
+  L.push("If anything comes up — workload, tools, a question, anything you need to do your best work — reach out to me anytime. We've got your back.","");
+  L.push("Thanks again,",me||"[Your name]","DedicatusIT");
+  var body=L.join("\n");
+  if(mode==="copy"){copyText(body);toast("Tech note copied");}else emailDoc("",subj,body);
+}
+function copyText(t){try{if(navigator.clipboard){navigator.clipboard.writeText(t);return;}}catch(e){}var ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}ta.remove();}
 /* ===== QBR instrument ===== */
 function qbrPrefill(a){
   var last=a.qbr.last||a.started||"";var acc={metrics:[],wins:[],issues:[],actions:[],expansion:[]};
