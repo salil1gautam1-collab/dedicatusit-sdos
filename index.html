@@ -386,7 +386,7 @@ function renderDashboard(){
     return '<div class="due-row"><span class="sev '+(d[5]<0?'red':'amber')+'"></span><span>'+label+' · '+d[3]+' ('+d[4]+')</span><span class="when">'+when+'</span><button class="btn sm" onclick="'+fn+'(\''+d[1]+'\',\''+d[2]+'\')">Log</button></div>';
   }).join(''):'<div class="muted sm">Nothing due — you\'re on top of the cadences.</div>')+'</div>';
   if(!accts.length)return kpiHtml+'<div class="empty"><b>No accounts yet.</b>Add an MSP to start tracking placements.<br><br><button class="btn p" onclick="openAcctForm()">+ New MSP</button></div>';
-  return kpiHtml+acctSection+commercialPanel(accts)+openActionsPanel(accts)+alertHtml+dueHtml+ceoPanel(accts);
+  return kpiHtml+acctSection+stickinessPanel(accts)+commercialPanel(accts)+openActionsPanel(accts)+alertHtml+dueHtml+ceoPanel(accts);
 }
 function commercialPanel(accts){
   var mrr=accts.reduce(function(t,a){return t+acctMRR(a);},0);
@@ -444,6 +444,49 @@ function acctRow(a){var w=acctWorst(a);var due=a.seats.some(function(s){var c=ca
   return '<div class="lrow acct" onclick="openAccount(\''+a.id+'\')"><span class="dot '+['green','amber','red'][w]+'"></span><div class="lmain"><b>'+esc(a.name||"Unnamed")+'</b><span class="lsub">'+a.seats.length+' seat'+(a.seats.length===1?"":"s")+(a.sdm?" · "+esc(a.sdm):"")+'</span></div>'+(due?'<span class="badge due">due</span>':'')+'<span class="chev">›</span></div>';}
 function seatLine(a,s){
   return '<div class="lrow sub" onclick="openSeat(\''+a.id+'\',\''+s.id+'\')"><span class="dot '+seatColor(s)+'"></span><div class="lmain"><b>'+esc(s.tech||"Unnamed")+(s.title?' · '+esc(s.title):'')+'</b><span class="lsub">'+healthReason(s)+'</span></div><span class="hpips">'+dotFor(s,'msp')+'<span class="pl">M</span>'+dotFor(s,'tech')+'<span class="pl">T</span></span><span class="chev">›</span></div>';}
+function avg(arr){return arr.length?arr.reduce(function(t,x){return t+x;},0)/arr.length:0;}
+function expDays(a){var ds=(a.expansion||[]).map(function(e){return e.date;}).filter(Boolean).sort();if(!ds.length)return null;return Math.floor((Date.now()-Date.parse(ds[ds.length-1]))/86400000);}
+function stickiness(a){
+  var seats=a.seats||[];
+  if(!seats.length)return {score:0,label:"No seats",action:"Add the placed technician to start reading this relationship.",ready:false,risk:false,reasons:[],drags:[]};
+  var G={green:1,amber:0.5,red:0,"":0.3};
+  var mv=function(s,side){return G[healthUnknown(s)?"":(s.health[side]||"")];};
+  var fHealth=avg(seats.map(function(s){return mv(s,"msp");}));
+  var fTrend=avg(seats.map(function(s){var ser=healthSeries(s,"msp");if(ser.length<2)return 0.5;var d=RANK[ser[ser.length-2].v]-RANK[ser[ser.length-1].v];return d>0?1:(d<0?0.1:0.6);}));
+  var fCont=avg(seats.map(function(s){return readiness(s)/100;}));
+  var fSeats=seats.length>=2?1:0.45;
+  var ed=expDays(a);var fExp=ed===null?0.1:(ed<=90?1:(ed<=180?0.6:0.3));
+  var cadOn=avg(seats.map(function(s){var d=cadDue(s);return (d===null||d>=0)?1:0;}));
+  var qd=qbrDue(a);var qbrOn=(qd===null||qd>=0)?1:0;var fRhythm=cadOn*0.6+qbrOn*0.4;
+  var ten=Math.max.apply(null,seats.map(function(s){return s.started?Math.floor((Date.now()-Date.parse(s.started))/86400000/30):0;}));
+  var fTen=ten>=12?1:(ten>=6?0.8:(ten>=3?0.6:0.4));
+  var fTech=avg(seats.map(function(s){return mv(s,"tech");}));
+  var fTenTech=fTen*0.5+fTech*0.5;
+  var score=Math.round(fHealth*25+fTrend*10+fCont*15+fSeats*10+fExp*15+fRhythm*15+fTenTech*10);
+  var label=score>=75?"Sticky":score>=55?"Solid":score>=40?"Watch":"At-risk";
+  var risk=score<40;
+  var renSoon=null;seats.forEach(function(s){var r=renewalDue(s);if(r!==null&&r<=60&&(renSoon===null||r<renSoon))renSoon=r;});
+  var action="",ready=false;
+  if(renSoon!==null&&fHealth<0.75){action="Renewal in "+renSoon+"d with soft health — schedule a save conversation before it lands.";}
+  else if(risk||fTrend<0.3){action="Drifting — health "+(fTrend<0.3?"is slipping":"is weak")+". Bring a concrete value idea to the next call and re-engage.";}
+  else if(seats.some(gap)){action="Two-sided gap — the MSP is cooler than the tech realises. Clear the friction before it surfaces at renewal.";}
+  else if(qd!==null&&qd<0){action="QBR overdue — hold the review; it's your best moment to reinforce value and surface expansion.";}
+  else if(cadOn<1){action="Cadence slipping — re-establish the rhythm; engagement is how stickiness is held.";}
+  else if(fCont<0.4){action="Shallow knowledge ("+Math.round(fCont*100)+"% continuity) — get the tech's KB articles in so you'd genuinely be missed.";}
+  else if(score>=55&&ed!==null&&ed<=90){action="Expansion-ready — they're leaning in (a signal "+ed+"d ago). Propose "+(seats.length<2?"a second seat":"the next scope")+".";ready=true;}
+  else if(score>=55&&seats.length<2){action="Solid and single-seat — float a second seat or an added service; the relationship can take more.";ready=true;}
+  else if(ed===null||ed>180){action="Plateaued — no new scope in a while. Proactively bring a value idea to keep the account growing.";}
+  else{action="Healthy — protect the rhythm and keep listening for what else they'd hand over.";}
+  var F=[["Client health",fHealth],["Trend",fTrend],["Continuity depth",fCont],["Multiple seats",fSeats],["Expansion momentum",fExp],["Cadence/QBR rhythm",fRhythm],["Tenure & engagement",fTenTech]];
+  return {score:score,label:label,action:action,ready:ready,risk:risk,reasons:F.filter(function(x){return x[1]>=0.75;}).map(function(x){return x[0];}),drags:F.filter(function(x){return x[1]<0.45;}).map(function(x){return x[0];})};
+}
+function stickTone(label){return {"Sticky":"ok","Solid":"ok","Watch":"due","At-risk":"over","No seats":""}[label]||"";}
+function stickinessPanel(accts){
+  if(!accts.length)return '';
+  var rows=accts.map(function(a){return {a:a,s:stickiness(a)};}).sort(function(x,y){return x.s.score-y.s.score;});
+  return '<div class="card"><div class="block-h">Account relationships — sticky vs. needs value</div>'+
+    rows.map(function(r){var s=r.s;return '<div class="alert-row" onclick="openAccount(\''+r.a.id+'\')"><span class="badge '+stickTone(s.label)+'">'+s.label+'</span><span class="mono" style="min-width:30px;text-align:right">'+s.score+'</span><div class="lmain" style="margin-left:6px"><b>'+esc(r.a.name||"Unnamed")+'</b><span class="lsub">'+esc(s.action)+'</span></div><span class="chev">›</span></div>';}).join('')+'</div>';
+}
 function ceoPanel(accts){
   var seats=[];accts.forEach(function(a){(a.seats||[]).forEach(function(s){seats.push(s);});});
   if(!seats.length)return '';
@@ -507,6 +550,13 @@ function acctDetail(a){
     '<h2 style="margin-top:8px">'+esc(a.name||'Untitled MSP')+'</h2>'+
     '<div class="muted sm">SDM '+esc(a.sdm||'—')+' · since '+fmt(a.started)+' · account health '+["green","amber","red"][acctWorst(a)]+(acctMRR(a)?' · '+money(acctMRR(a))+'/mo':'')+'</div></div></header>'+
   '<div class="pbody">'+
+  (function(){var s=stickiness(a);return '<div class="block"><h4>Relationship read</h4>'+
+    '<div class="row" style="justify-content:space-between;align-items:center"><div><span class="badge '+stickTone(s.label)+'">'+s.label+'</span> <span class="mono" style="font-size:22px;font-weight:700;vertical-align:middle">'+s.score+'</span> <span class="muted xs">/100 stickiness</span></div></div>'+
+    '<div class="bar" style="margin-top:8px"><i style="width:'+s.score+'%;background:var(--'+(s.score>=75?'green':s.score>=55?'accent':s.score>=40?'amber':'red')+')"></i></div>'+
+    '<div style="margin-top:10px"><span class="muted xs" style="text-transform:uppercase;letter-spacing:.08em">Do next</span><div style="margin-top:2px">'+esc(s.action)+'</div></div>'+
+    (s.reasons.length?'<div class="muted xs" style="margin-top:8px">Strengths: '+s.reasons.join(', ')+'</div>':'')+
+    (s.drags.length?'<div class="muted xs" style="margin-top:3px">Watch: '+s.drags.join(', ')+'</div>':'')+
+    '</div>';})()+
   '<div class="block"><h4>Seats ('+a.seats.length+')</h4>'+
     (a.seats.length?a.seats.map(s=>seatRow(a,s)).join(''):'<div class="muted sm">No seats yet.</div>')+
     '<button class="btn p full" style="margin-top:10px" onclick="openSeatForm(\''+a.id+'\')">+ Add a seat (technician)</button>'+
@@ -685,12 +735,7 @@ function renderGuide(){return '<div class="guide card">'+
   '<h3>You own / the MSP owns</h3><ul><li><b>We own:</b> relationship health (both sides), the tech\'s growth &amp; retention, quality, continuity, coverage, the cadence, expansion.</li><li><b>MSP owns:</b> direction, roster, leave, priorities, tools, day-to-day feedback.</li></ul>'+
   '<h3>The gap detector</h3><p>Signs a tech is struggling the MSP won\'t report: going quiet, shorter answers, less initiative; working past hours; stopped asking questions; unnamed friction. Catch one early.</p>'+
   '<h3>Metrics that matter</h3><p>Seat health (both sides), tech tenure, renewal &amp; expansion, continuity readiness, cadence adherence. <b>Not</b> ticket throughput.</p>'+
-  '</div>'+
-  '<div class="card"><div class="block-h">Reference documents</div>'+
-  '<div class="muted sm" style="margin-bottom:8px">The full strategy behind this console. These open in your browser.</div>'+
-  '<div class="logitem"><b>SDOS Playbook</b><div class="muted xs" style="margin:2px 0 6px">How the whole operating system works, in detail.</div><div class="row"><a class="btn sm" style="text-decoration:none" href="assets/docs/DedicatusIT_SDOS_Playbook.pdf" target="_blank">Open PDF</a></div></div>'+
-  '<div class="logitem"><b>Service Doctrine</b><div class="muted xs" style="margin:2px 0 6px">The 8 pillars, 3 domains and the governing ethic.</div><div class="row"><a class="btn sm" style="text-decoration:none" href="assets/docs/DedicatusIT_Service_Doctrine.pdf" target="_blank">Open PDF</a></div></div>'+
-  '<div class="logitem"><b>SDOS Templates</b><div class="muted xs" style="margin:2px 0 6px">The operational worksheets (Excel).</div><div class="row"><a class="btn sm" style="text-decoration:none" href="assets/docs/DedicatusIT_SDOS_Templates.xlsx" download>Download Excel</a></div></div>'+
+  '<p class="muted xs" style="margin-top:14px">The full SDOS Playbook, Service Doctrine and Templates are kept privately offline.</p>'+
   '</div>';}
 
 /* ---- settings ---- */
