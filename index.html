@@ -202,6 +202,15 @@ a.link{color:var(--accent);text-decoration:none}
 .info{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1px solid var(--line);color:var(--muted);font-size:9px;font-style:italic;font-weight:700;font-family:var(--ui);cursor:pointer;vertical-align:middle;margin-left:5px;text-transform:none;letter-spacing:0}
 .info:hover{border-color:var(--accent);color:var(--accent)}
 .fldhint{font-size:11.5px;color:var(--muted);line-height:1.45;margin:4px 0 2px;border-left:2px solid var(--accent-deep);padding-left:9px}
+
+.histscroll{max-height:58vh;overflow-y:auto;border:1px solid var(--line);border-radius:11px;margin-top:6px}
+.cadentry{border-bottom:1px solid var(--line-soft)}
+.cadentry:last-child{border-bottom:none}
+.cadhead{display:flex;align-items:center;gap:9px;padding:10px 12px;cursor:pointer}
+.cadhead:hover{background:var(--surface2)}
+.cadhead .d{font-family:var(--mono);font-size:11px;color:var(--ink);flex:0 0 auto}
+.cadsnip{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.caddetail{padding:0 12px 12px}
 </style>
 </head>
 <body>
@@ -263,10 +272,10 @@ function fmt(iso){if(!iso)return "—";const d=new Date(iso);return d.toLocaleDa
 function uid(x){return (x||"x")+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function esc(s){return (s==null?'':String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 
-function blankSeat(){const bf={};SECTIONS.forEach(([k])=>bf[k]={text:"",updated:""});return {id:uid("s"),tech:"",title:"",band:"",started:"",status:"active",
+function blankSeat(){const bf={};SECTIONS.forEach(([k])=>bf[k]={text:"",updated:""});return {id:uid("s"),tech:"",title:"",band:"",started:"",status:"active",email:"",
   health:{msp:"",tech:"",note:"",updated:""},cadence:{freq:14,last:"",next:""},pulse:{last:"",next:""},rate:"",renewal:"",actions:[],
   mspLog:[],techLog:[],backfill:bf,growth:{goal:"",lastConvo:""},log:[]};}
-function blankAccount(){return {id:uid("a"),name:"",sdm:state&&state.me?state.me.name:"",started:"",status:"active",
+function blankAccount(){return {id:uid("a"),name:"",sdm:state&&state.me?state.me.name:"",started:"",status:"active",contacts:[],
   qbr:{last:"",next:"",notes:""},expansion:[],log:[],seats:[]};}
 
 function seed(){
@@ -284,7 +293,7 @@ function seed(){
 /* migrate v1 (flat placements) -> v2 (accounts->seats); also normalises */
 function normalize(s){
   if(!s) return seed();
-  if(s.accounts){ s.accounts.forEach(a=>{a.seats=a.seats||[];a.expansion=a.expansion||[];a.log=a.log||[];a.qbr=a.qbr||{last:"",next:"",notes:""};
+  if(s.accounts){ s.accounts.forEach(a=>{a.seats=a.seats||[];a.expansion=a.expansion||[];a.contacts=a.contacts||[];a.log=a.log||[];a.qbr=a.qbr||{last:"",next:"",notes:""};
     a.seats.forEach(fixSeat);}); if(!s.me)s.me={name:"",email:"",role:"owner"}; if(!s.training)s.training=[]; s.v=2; return s; }
   if(s.placements){ const map={};
     s.placements.forEach(p=>{ const key=(p.client||"Untitled").trim().toLowerCase();
@@ -300,7 +309,7 @@ function normalize(s){
 function fixSeat(s){s.health=s.health||{msp:"",tech:"",note:"",updated:""};s.cadence=s.cadence||{freq:14,last:"",next:""};
   s.pulse=s.pulse||{last:"",next:""};s.title=s.title||"";s.mspLog=s.mspLog||[];s.techLog=s.techLog||[];
   s.backfill=s.backfill||{};SECTIONS.forEach(([k])=>{if(!s.backfill[k])s.backfill[k]={text:"",updated:""};});
-  s.growth=s.growth||{goal:"",lastConvo:""};s.log=s.log||[];s.rate=s.rate||"";s.renewal=s.renewal||"";s.actions=s.actions||[];}
+  s.growth=s.growth||{goal:"",lastConvo:""};s.log=s.log||[];s.rate=s.rate||"";s.renewal=s.renewal||"";s.actions=s.actions||[];s.email=s.email||"";}
 
 function load(){let s;try{const r=localStorage.getItem(LS);s=r?JSON.parse(r):null;}catch(e){s=null;}state=normalize(s);if(!state.settings)state.settings={weeklyFormUrl:"",monthlyFormUrl:""};if(!state.training)state.training=[];}
 function save(){state.updatedAt=new Date().toISOString();try{localStorage.setItem(LS,JSON.stringify(state));}catch(e){}
@@ -686,7 +695,14 @@ function recognitionDoc(aid,sid,mode){var a=getA(aid),s=getS(a,sid);var t=techSt
   if(s.growth&&s.growth.goal)secs.push(["Growth goal",s.growth.goal]);
   secs.push(["From your service delivery manager","Keep it up \u2014 we see it, and the client does too."]);
   var html=docShell(title,sub,secs);var fname="Recognition_"+(s.tech||"tech").replace(/\s+/g,"-")+"_"+today();
-  if(mode==="word")downloadHtmlDoc(fname,html);else if(mode==="print")openPrint(html);else{downloadHtmlDoc(fname,html);emailDoc("",title,"Hi "+(s.tech||"")+",\n\nA small note of recognition \u2014 the document has downloaded, please find it attached.\n\nThank you,\n"+((state.me&&state.me.name)||"DedicatusIT"));}}
+  if(mode==="word")downloadHtmlDoc(fname,html);else if(mode==="print")openPrint(html);
+  else{var first=s.tech?s.tech.split(" ")[0]:"there";var b="Hi "+first+",\n\nA quick note of recognition for the work you've been doing"+(a.name?" with "+a.name:"")+".\n\n";
+    if(t.greens>0)b+="The client's feedback has been positive"+(t.greens>1?" across several check-ins":"")+" — that's down to you.\n";
+    if(t.wins.length)b+="\nA few highlights:\n"+t.wins.slice(-4).map(function(w){return "- "+w.replace(/\n+/g," ");}).join("\n")+"\n";
+    if(t.articles.length)b+="\nThank you too for the "+t.articles.length+" knowledge article"+(t.articles.length===1?"":"s")+" you've contributed — they help the whole team.\n";
+    if(s.growth&&s.growth.goal)b+="\nAnd we're behind your growth toward "+s.growth.goal+".\n";
+    b+="\nIt's seen and appreciated. Keep it up.\n\nThank you,\n"+((state.me&&state.me.name)||"DedicatusIT");
+    emailDoc("",title,b);toast("Recognition email opened");}}
 function editSLog(aid,sid,idx){const s=getS(getA(aid),sid);const l=s.log[idx];if(!l)return;const v=window.prompt("Edit note:",l.note);if(v===null)return;l.note=v;save();reSeat(aid,sid);}
 function delSLog(aid,sid,idx){if(!confirm("Delete this log entry?"))return;const s=getS(getA(aid),sid);s.log.splice(idx,1);save();reSeat(aid,sid);}
 function editALog(aid,idx){const a=getA(aid);const l=a.log[idx];if(!l)return;const v=window.prompt("Edit note:",l.note);if(v===null)return;l.note=v;save();reAcct(aid);}
@@ -706,11 +722,18 @@ function openAcctForm(id){const a=id?getA(id):blankAccount();const isNew=!id;
    '<h2 style="font-size:17px">'+(isNew?'New MSP':'Edit MSP')+'</h2><span></span></div></div></header><div class="pbody">'+
    fieldHTML("MSP / client name","name",a.name)+fieldHTML("SDM (owner)","sdm",a.sdm)+
    '<label class="fld">Account start date</label><input id="f_started" type="date" value="'+(a.started||'')+'">'+
+   '<label class="fld">MSP contacts <span class="muted xs">(name + email — used to pre-fill client emails)</span></label>'+
+   '<div id="contactRows">'+contactRowsHtml(a.contacts||[])+'</div>'+
+   '<button class="btn sm ghost" style="margin-top:6px" onclick="addContactRow()">+ Add contact</button>'+
    '<button class="btn p full" style="margin-top:16px" onclick="saveAcct(\''+(id||'')+'\')">'+(isNew?'Add MSP':'Save')+'</button>'+
    (isNew?'<div class="hint">After saving, add the technician seats inside this account.</div>':'')+'</div>';
   showPanel(true);}
+function contactRowsHtml(contacts){var list=(contacts&&contacts.length)?contacts:[{name:"",email:""}];
+  return list.map(function(c){return '<div class="row crow" style="gap:6px;margin-bottom:6px"><input class="c_name" placeholder="Name" value="'+esc(c.name||'')+'" style="flex:1;min-width:90px"><input class="c_email" type="email" placeholder="email@domain.com" value="'+esc(c.email||'')+'" style="flex:2;min-width:120px"><button class="btn sm ghost" style="padding:2px 9px;color:#ffb4b4" onclick="this.parentNode.remove()">×</button></div>';}).join('');}
+function addContactRow(){var w=document.getElementById("contactRows");if(!w)return;var d=document.createElement("div");d.innerHTML=contactRowsHtml([{name:"",email:""}]);w.appendChild(d.firstChild);}
 function saveAcct(id){const g=k=>document.getElementById("f_"+k).value.trim();let a=id?getA(id):blankAccount();
   a.name=g("name");a.sdm=g("sdm");a.started=g("started");if(!a.qbr.next&&a.started)a.qbr.next=addDays(a.started,90);
+  var rows=document.querySelectorAll("#contactRows .crow");var cs=[];rows.forEach(function(r){var n=(r.querySelector(".c_name")||{}).value||"";var em=(r.querySelector(".c_email")||{}).value||"";n=n.trim();em=em.trim();if(n||em)cs.push({name:n,email:em});});a.contacts=cs;
   if(!id)state.accounts.push(a);save();openAccount(a.id);}
 
 function openSeatForm(aid,sid){const a=getA(aid);const s=sid?getS(a,sid):blankSeat();const isNew=!sid;
@@ -720,6 +743,7 @@ function openSeatForm(aid,sid){const a=getA(aid);const s=sid?getS(a,sid):blankSe
    '<h2 style="font-size:17px">'+(isNew?'New seat':'Edit seat')+'</h2><span></span></div>'+
    '<div class="muted sm" style="margin-top:4px">'+esc(a.name)+'</div></div></header><div class="pbody">'+
    fieldHTML("Technician (name)","tech",s.tech)+fieldHTML("Title / role","title",s.title)+fieldHTML("Band / level","band",s.band)+
+   '<label class="fld">Technician email</label><input id="f_email" type="email" placeholder="name@domain.com" value="'+esc(s.email||'')+'">'+
    '<label class="fld">Start date</label><input id="f_started" type="date" value="'+(s.started||'')+'">'+
    '<label class="fld">Monthly rate (USD)</label><input id="f_rate" type="number" placeholder="e.g. 4500" value="'+esc(s.rate||'')+'">'+
    '<label class="fld">Renewal date</label><input id="f_renewal" type="date" value="'+(s.renewal||'')+'">'+
@@ -727,7 +751,7 @@ function openSeatForm(aid,sid){const a=getA(aid);const s=sid?getS(a,sid):blankSe
    '<button class="btn p full" style="margin-top:16px" onclick="saveSeat(\''+aid+'\',\''+(sid||'')+'\')">'+(isNew?'Add seat':'Save')+'</button></div>';
   showPanel(true);}
 function saveSeat(aid,sid){const g=k=>document.getElementById("f_"+k).value.trim();const a=getA(aid);let s=sid?getS(a,sid):blankSeat();
-  s.tech=g("tech");s.title=g("title");s.band=g("band");s.started=g("started");s.rate=g("rate");s.renewal=g("renewal");var fsel=document.getElementById("f_freqsel");var fc=document.getElementById("f_freqcustom");var fvv=fsel?fsel.value:"14";s.cadence.freq=(fvv==="custom")?(parseInt(fc&&fc.value)||14):(parseInt(fvv)||14);recomputeCad(s);
+  s.tech=g("tech");s.title=g("title");s.band=g("band");s.started=g("started");s.email=g("email");s.rate=g("rate");s.renewal=g("renewal");var fsel=document.getElementById("f_freqsel");var fc=document.getElementById("f_freqcustom");var fvv=fsel?fsel.value:"14";s.cadence.freq=(fvv==="custom")?(parseInt(fc&&fc.value)||14):(parseInt(fvv)||14);recomputeCad(s);
   if(!sid)a.seats.push(s);save();openSeat(aid,s.id);}
 
 function openForm(){openAcctForm();}  /* FAB adds an MSP */
@@ -784,6 +808,7 @@ function cadHistory(aid,sid,entries,kind){
   return ctrl+'<div id="cadhist_'+kind+'">'+renderCadList(aid,sid,kind,entries,"","")+'</div>';
 }
 function filterCad(aid,sid,kind){var s=getS(getA(aid),sid);var entries=kind==="msp"?s.mspLog:s.techLog;var q=(document.getElementById("cf_q_"+kind)||{}).value||"";var m=(document.getElementById("cf_m_"+kind)||{}).value||"";var c=document.getElementById("cadhist_"+kind);if(c)c.innerHTML=renderCadList(aid,sid,kind,entries,q,m);}
+function toggleCad(id){var d=document.getElementById(id);if(!d)return;var open=d.style.display!=="none";d.style.display=open?"none":"block";var head=d.previousElementSibling;if(head){var ch=head.querySelector(".chev");if(ch)ch.textContent=open?"›":"⌄";}}
 function renderCadList(aid,sid,kind,entries,q,m){
   if(!entries||!entries.length)return '<div class="muted sm" style="margin-top:8px">No entries yet.</div>';
   var qs=kind==="msp"?MSPQ:TECHQ;var hl=kind==="msp"?"satisfaction":"engagement";q=(q||"").toLowerCase();
@@ -791,15 +816,22 @@ function renderCadList(aid,sid,kind,entries,q,m){
     if(m&&(e.date||"").slice(0,7)!==m)return false;
     if(q){var blob=(e.date+" "+qs.map(function(x){return e[x[0]]||"";}).join(" ")).toLowerCase();if(blob.indexOf(q)<0)return false;}return true;});
   if(!list.length)return '<div class="muted sm" style="margin-top:8px">No entries match.</div>';
-  return list.map(function(e){return '<div class="logitem"><div class="row" style="justify-content:space-between;align-items:center"><span class="d">'+fmt(e.date)+(e[hl]?' · '+e[hl]:'')+'</span><span>'+
-    '<button class="btn sm ghost" style="padding:2px 7px" onclick="cadDoc(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\',\'print\')">PDF</button> '+
-    '<button class="btn sm ghost" style="padding:2px 7px" onclick="cadDoc(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\',\'word\')">Word</button> '+
-    '<button class="btn sm ghost" style="padding:2px 7px" onclick="cadDoc(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\',\'send\')">Doc</button> '+
-    '<button class="btn sm" style="padding:2px 7px" onclick="'+(kind==="msp"?'clientEmail':'techNote')+'(\''+aid+'\',\''+sid+'\',\''+e.id+'\',\'email\')">'+(kind==="msp"?'Client email':'Tech note')+'</button> '+
-    '<button class="btn sm ghost" style="padding:2px 7px" onclick="'+(kind==="msp"?'clientEmail':'techNote')+'(\''+aid+'\',\''+sid+'\',\''+e.id+'\',\'copy\')">Copy</button> '+
-    '<button class="btn sm ghost" style="padding:2px 7px" onclick="editCad(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\')">Edit</button> '+
-    '<button class="btn sm ghost" style="padding:2px 7px;color:#ffb4b4" onclick="delCad(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\')">Del</button></span></div>'+
-    qs.map(function(x){return e[x[0]]?'<div style="margin-top:5px"><span class="muted xs">'+esc(x[1])+'</span><br>'+esc(e[x[0]])+'</div>':'';}).join('')+'</div>';}).join('');
+  return '<div class="histscroll">'+list.map(function(e){
+    var snip="";for(var i=0;i<qs.length;i++){if(e[qs[i][0]]){snip=e[qs[i][0]];break;}}snip=(snip||"").replace(/\n+/g," ");var more=snip.length>64;snip=snip.slice(0,64);
+    var did="cd_"+kind+"_"+e.id;
+    return '<div class="cadentry"><div class="cadhead" onclick="toggleCad(\''+did+'\')"><span class="dot '+(e[hl]||'')+'"></span><span class="d">'+fmt(e.date)+'</span><span class="cadsnip">'+esc(snip)+(more?'…':'')+'</span><span class="chev">›</span></div>'+
+      '<div class="caddetail" id="'+did+'" style="display:none">'+
+      '<div class="row" style="gap:4px;flex-wrap:wrap;margin:8px 0">'+
+      '<button class="btn sm ghost" style="padding:2px 7px" onclick="cadDoc(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\',\'print\')">PDF</button>'+
+      '<button class="btn sm ghost" style="padding:2px 7px" onclick="cadDoc(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\',\'word\')">Word</button>'+
+      '<button class="btn sm ghost" style="padding:2px 7px" onclick="cadDoc(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\',\'send\')">Doc</button>'+
+      '<button class="btn sm" style="padding:2px 7px" onclick="'+(kind==="msp"?'clientEmail':'techNote')+'(\''+aid+'\',\''+sid+'\',\''+e.id+'\',\'email\')">'+(kind==="msp"?'Client email':'Tech note')+'</button>'+
+      '<button class="btn sm ghost" style="padding:2px 7px" onclick="'+(kind==="msp"?'clientEmail':'techNote')+'(\''+aid+'\',\''+sid+'\',\''+e.id+'\',\'copy\')">Copy</button>'+
+      '<button class="btn sm ghost" style="padding:2px 7px" onclick="editCad(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\')">Edit</button>'+
+      '<button class="btn sm ghost" style="padding:2px 7px;color:#ffb4b4" onclick="delCad(\''+aid+'\',\''+sid+'\',\''+kind+'\',\''+e.id+'\')">Del</button></div>'+
+      qs.map(function(x){return e[x[0]]?'<div style="margin-top:5px"><span class="muted xs">'+esc(x[1])+'</span><br>'+esc(e[x[0]])+'</div>':'';}).join('')+
+      (e.privateNote?'<div style="margin-top:7px;border-left:2px solid #5e4f1c;padding-left:8px"><span class="muted xs">SDM private (internal)</span><br>'+esc(e.privateNote)+'</div>':'')+
+      '</div></div>';}).join('')+'</div>';
 }
 function cfPick(btn){var p=btn.parentNode;p.querySelectorAll("button").forEach(function(b){b.classList.remove("on");});btn.classList.add("on");}
 function openMspForm(aid,sid){cadForm(aid,sid,"msp");}
@@ -1002,7 +1034,7 @@ function cadDoc(aid,sid,kind,id,mode){
   var html=docShell(title,sub,secs);var fname=(kind==="msp"?"MSP-cadence_":"Tech-pulse_")+(s.tech||"seat").replace(/\s+/g,"-")+"_"+e.date;
   if(mode==="word")downloadHtmlDoc(fname,html);
   else if(mode==="print")openPrint(html);
-  else{var subj=title+" ("+fmt(e.date)+")";var body="Hi,\n\nPlease find the "+(kind==="msp"?"cadence":"pulse")+" summary for "+(s.tech||"the tech")+" at "+(a.name||"")+", dated "+fmt(e.date)+".\n\n(The document has downloaded — attach it to this email.)\n\nThanks,\n"+((state.me&&state.me.name)||"DedicatusIT");downloadHtmlDoc(fname,html);emailDoc("",subj,body);}
+  else{var subj=title+" ("+fmt(e.date)+")";var body="Hi,\n\nPlease find attached the "+(kind==="msp"?"cadence":"pulse")+" summary for "+(s.tech||"the tech")+" at "+(a.name||"")+", dated "+fmt(e.date)+".\n\nThanks,\n"+((state.me&&state.me.name)||"DedicatusIT");downloadHtmlDoc(fname,html);emailDoc("",subj,body);toast("Summary downloaded — attach it to the email before sending");}
 }
 function asSentences(text){return (text||"").split(/\n+/).map(function(l){return l.trim().replace(/^[-•*]\s*/,"");}).filter(Boolean).map(function(l){l=l.charAt(0).toUpperCase()+l.slice(1);if(!/[.!?…]$/.test(l))l+=".";return l;});}
 function bl(arr){return arr.map(function(x){return "- "+x;}).join("\n");}
@@ -1029,7 +1061,8 @@ function clientEmail(aid,sid,id,mode){
   L.push("Development:","- We're continuing to invest in "+first+"'s professional development so "+first+" keeps adding value to your team.","");
   L.push("Thank you again for your feedback and partnership. We appreciate the opportunity to support your team and will continue working to ensure "+first+"'s success and value to your organization.","","Best regards,",me||"[Your name]","DedicatusIT");
   var body=L.join("\n");
-  if(mode==="copy"){copyText(body);toast("Client email copied — paste into your mail app");}else emailDoc("",subj,body);
+  var to=(a.contacts||[]).map(function(c){return c.email;}).filter(Boolean).join(",");
+  if(mode==="copy"){copyText(body);toast("Client email copied — paste into your mail app");}else emailDoc(to,subj,body);
 }
 /* TECH NOTE — from a tech pulse. Recognition + growth + relayed MSP praise. NEVER workload/morale/blockers/unsaid/private. */
 function techNote(aid,sid,id,mode){
@@ -1048,7 +1081,7 @@ function techNote(aid,sid,id,mode){
   L.push("And if anything ever comes up — workload, tools, a question, anything you need to do your best work — reach out to me anytime. We've got your back.","");
   L.push("Thanks again,",me||"[Your name]","DedicatusIT");
   var body=L.join("\n");
-  if(mode==="copy"){copyText(body);toast("Tech note copied — paste into your mail app");}else emailDoc("",subj,body);
+  if(mode==="copy"){copyText(body);toast("Tech note copied — paste into your mail app");}else emailDoc(s.email||"",subj,body);
 }
 function copyText(t){try{if(navigator.clipboard){navigator.clipboard.writeText(t);return;}}catch(e){}var ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}ta.remove();}
 /* ===== QBR instrument ===== */
@@ -1097,7 +1130,7 @@ function qbrDoc(aid,id,mode){
   var secs=[["Review date",fmt(e.date)],["Period",(e.from?fmt(e.from):"start")+" → "+fmt(e.to||e.date)],["Overall satisfaction",(e.satisfaction||"—").toUpperCase()]].concat(QBRQ.map(function(x){return [x[1],e[x[0]]||""];}));
   var html=docShell(title,sub,secs);var fname="QBR_"+(a.name||"account").replace(/\s+/g,"-")+"_"+e.date;
   if(mode==="word")downloadHtmlDoc(fname,html);else if(mode==="print")openPrint(html);
-  else{downloadHtmlDoc(fname,html);emailDoc("",title+" ("+fmt(e.date)+")","Hi,\n\nPlease find the QBR for "+(a.name||"")+" covering "+sub+".\n\n(The document has downloaded — attach it to this email.)\n\nThanks,\n"+((state.me&&state.me.name)||"DedicatusIT"));}
+  else{downloadHtmlDoc(fname,html);emailDoc("",title+" ("+fmt(e.date)+")","Hi,\n\nPlease find attached the QBR for "+(a.name||"")+" covering "+sub+".\n\nThanks,\n"+((state.me&&state.me.name)||"DedicatusIT"));toast("QBR downloaded — attach it to the email before sending");}
 }
 function qbrHistory(aid){
   var a=getA(aid);a.qbrLog=a.qbrLog||[];if(!a.qbrLog.length)return '<div class="muted sm" style="margin-top:10px">No QBRs recorded yet.</div>';
@@ -1110,17 +1143,31 @@ function renderQbrList(aid,q,m){
   var a=getA(aid);var entries=(a.qbrLog||[]);q=(q||"").toLowerCase();
   var list=entries.slice().sort(function(x,y){return (x.date<y.date)?1:-1;}).filter(function(e){if(m&&(e.date||"").slice(0,7)!==m)return false;if(q){var blob=(e.date+" "+QBRQ.map(function(x){return e[x[0]]||"";}).join(" ")).toLowerCase();if(blob.indexOf(q)<0)return false;}return true;});
   if(!list.length)return '<div class="muted sm" style="margin-top:8px">No QBRs match.</div>';
-  return list.map(function(e){return '<div class="logitem"><div class="row" style="justify-content:space-between;align-items:center"><span class="d">'+fmt(e.date)+(e.satisfaction?' · '+e.satisfaction:'')+'</span><span>'+
-    '<button class="btn sm ghost" style="padding:2px 7px" onclick="qbrDoc(\''+aid+'\',\''+e.id+'\',\'print\')">PDF</button> '+
-    '<button class="btn sm ghost" style="padding:2px 7px" onclick="qbrDoc(\''+aid+'\',\''+e.id+'\',\'word\')">Word</button> '+
-    '<button class="btn sm ghost" style="padding:2px 7px" onclick="qbrDoc(\''+aid+'\',\''+e.id+'\',\'send\')">Send</button> '+
-    '<button class="btn sm ghost" style="padding:2px 7px" onclick="openQbrForm(\''+aid+'\',\''+e.id+'\')">Edit</button> '+
-    '<button class="btn sm ghost" style="padding:2px 7px;color:#ffb4b4" onclick="delQbr(\''+aid+'\',\''+e.id+'\')">Del</button></span></div>'+
-    '<div class="muted xs" style="margin-top:4px">Period '+(e.from?fmt(e.from):'start')+' → '+fmt(e.to||e.date)+'</div>'+
-    QBRQ.map(function(x){return e[x[0]]?'<div style="margin-top:5px"><span class="muted xs">'+esc(x[1])+'</span><br>'+esc(e[x[0]])+'</div>':'';}).join('')+'</div>';}).join('');
+  return '<div class="histscroll">'+list.map(function(e){var did="qb_"+e.id;
+    var snip="";for(var i=0;i<QBRQ.length;i++){if(e[QBRQ[i][0]]){snip=e[QBRQ[i][0]];break;}}snip=(snip||"").replace(/\n+/g," ");var more=snip.length>64;snip=snip.slice(0,64);
+    return '<div class="cadentry"><div class="cadhead" onclick="toggleCad(\''+did+'\')"><span class="dot '+(e.satisfaction||'')+'"></span><span class="d">'+fmt(e.date)+'</span><span class="cadsnip">'+esc(snip)+(more?'…':'')+'</span><span class="chev">›</span></div>'+
+    '<div class="caddetail" id="'+did+'" style="display:none">'+
+    '<div class="row" style="gap:4px;flex-wrap:wrap;margin:8px 0">'+
+    '<button class="btn sm ghost" style="padding:2px 7px" onclick="qbrDoc(\''+aid+'\',\''+e.id+'\',\'print\')">PDF</button>'+
+    '<button class="btn sm ghost" style="padding:2px 7px" onclick="qbrDoc(\''+aid+'\',\''+e.id+'\',\'word\')">Word</button>'+
+    '<button class="btn sm ghost" style="padding:2px 7px" onclick="qbrDoc(\''+aid+'\',\''+e.id+'\',\'send\')">Send</button>'+
+    '<button class="btn sm ghost" style="padding:2px 7px" onclick="openQbrForm(\''+aid+'\',\''+e.id+'\')">Edit</button>'+
+    '<button class="btn sm ghost" style="padding:2px 7px;color:#ffb4b4" onclick="delQbr(\''+aid+'\',\''+e.id+'\')">Del</button></div>'+
+    '<div class="muted xs">Period '+(e.from?fmt(e.from):'start')+' → '+fmt(e.to||e.date)+'</div>'+
+    QBRQ.map(function(x){return e[x[0]]?'<div style="margin-top:5px"><span class="muted xs">'+esc(x[1])+'</span><br>'+esc(e[x[0]])+'</div>':'';}).join('')+'</div></div>';}).join('')+'</div>';
 }
 load(); go("dashboard"); GD.init();
-if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{});}
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").then(function(reg){
+    reg.update();
+    setInterval(function(){reg.update();},30*60*1000);
+    document.addEventListener("visibilitychange",function(){if(!document.hidden)reg.update();});
+  }).catch(()=>{});
+  var __refreshing=false;
+  navigator.serviceWorker.addEventListener("controllerchange",function(){
+    if(__refreshing)return;__refreshing=true;location.reload();
+  });
+}
 </script>
 </body>
 </html>
