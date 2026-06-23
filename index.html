@@ -702,7 +702,7 @@ function recognitionDoc(aid,sid,mode){var a=getA(aid),s=getS(a,sid);var t=techSt
     if(t.articles.length)b+="\nThank you too for the "+t.articles.length+" knowledge article"+(t.articles.length===1?"":"s")+" you've contributed — they help the whole team.\n";
     if(s.growth&&s.growth.goal)b+="\nAnd we're behind your growth toward "+s.growth.goal+".\n";
     b+="\nIt's seen and appreciated. Keep it up.\n\nThank you,\n"+((state.me&&state.me.name)||"DedicatusIT");
-    emailDoc("",title,b);toast("Recognition email opened");}}
+    showEmailSheet("",title,b,"Recognition note — "+(s.tech||""));}}
 function editSLog(aid,sid,idx){const s=getS(getA(aid),sid);const l=s.log[idx];if(!l)return;const v=window.prompt("Edit note:",l.note);if(v===null)return;l.note=v;save();reSeat(aid,sid);}
 function delSLog(aid,sid,idx){if(!confirm("Delete this log entry?"))return;const s=getS(getA(aid),sid);s.log.splice(idx,1);save();reSeat(aid,sid);}
 function editALog(aid,idx){const a=getA(aid);const l=a.log[idx];if(!l)return;const v=window.prompt("Edit note:",l.note);if(v===null)return;l.note=v;save();reAcct(aid);}
@@ -1062,7 +1062,7 @@ function clientEmail(aid,sid,id,mode){
   L.push("Thank you again for your feedback and partnership. We appreciate the opportunity to support your team and will continue working to ensure "+first+"'s success and value to your organization.","","Best regards,",me||"[Your name]","DedicatusIT");
   var body=L.join("\n");
   var to=(a.contacts||[]).map(function(c){return c.email;}).filter(Boolean).join(",");
-  if(mode==="copy"){copyText(body);toast("Client email copied — paste into your mail app");}else emailDoc(to,subj,body);
+  if(mode==="copy"){copyText(body);toast("Client email copied — paste into your mail app");}else showEmailSheet(to,subj,body,"Client email — "+(a.name||""));
 }
 /* TECH NOTE — from a tech pulse. Recognition + growth + relayed MSP praise. NEVER workload/morale/blockers/unsaid/private. */
 function techNote(aid,sid,id,mode){
@@ -1081,9 +1081,31 @@ function techNote(aid,sid,id,mode){
   L.push("And if anything ever comes up — workload, tools, a question, anything you need to do your best work — reach out to me anytime. We've got your back.","");
   L.push("Thanks again,",me||"[Your name]","DedicatusIT");
   var body=L.join("\n");
-  if(mode==="copy"){copyText(body);toast("Tech note copied — paste into your mail app");}else emailDoc(s.email||"",subj,body);
+  if(mode==="copy"){copyText(body);toast("Tech note copied — paste into your mail app");}else showEmailSheet(s.email||"",subj,body,"Tech note — "+(s.tech||""));
 }
 function copyText(t){try{if(navigator.clipboard){navigator.clipboard.writeText(t);return;}}catch(e){}var ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}ta.remove();}
+var __email={to:"",subject:"",body:""};
+function showEmailSheet(to,subject,body,label){
+  __email={to:to||"",subject:subject||"",body:body||""};
+  var ov=document.getElementById("emailSheet");if(ov)ov.remove();
+  ov=document.createElement("div");ov.id="emailSheet";
+  ov.style.cssText="position:fixed;inset:0;background:rgba(2,6,12,.72);z-index:80;display:flex;align-items:flex-end;justify-content:center";
+  var c='<div style="background:var(--surface);border:1px solid var(--line);border-radius:16px 16px 0 0;max-width:680px;width:100%;max-height:92vh;overflow:auto;padding:16px">';
+  c+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b>'+esc(label||"Email")+'</b><button class="btn sm ghost" onclick="closeEmailSheet()">Close</button></div>';
+  c+='<div class="muted xs" style="margin-bottom:10px">Your mail app didn\'t accept the draft, so copy from here and paste into a new email.</div>';
+  if(to){c+='<div style="margin-bottom:8px"><span class="muted xs">TO</span><div class="row" style="gap:6px"><input readonly value="'+esc(to)+'" style="flex:1" onclick="this.select()"><button class="btn sm" onclick="copyEmailTo()">Copy</button></div></div>';}
+  c+='<div style="margin-bottom:8px"><span class="muted xs">SUBJECT</span><div class="row" style="gap:6px"><input readonly value="'+esc(subject)+'" style="flex:1" onclick="this.select()"><button class="btn sm" onclick="copyEmailSubject()">Copy</button></div></div>';
+  c+='<div><span class="muted xs">BODY</span><textarea readonly id="emailSheetBody" style="width:100%;min-height:240px" onclick="this.select()">'+esc(body)+'</textarea></div>';
+  c+='<div class="row" style="gap:8px;margin-top:10px"><button class="btn p" style="flex:1" onclick="copyEmailBody()">Copy email body</button><button class="btn ghost" onclick="emailTryApp()">Try mail app</button></div>';
+  c+='</div>';
+  ov.innerHTML=c;document.body.appendChild(ov);
+  ov.addEventListener("click",function(e){if(e.target===ov)closeEmailSheet();});
+}
+function closeEmailSheet(){var ov=document.getElementById("emailSheet");if(ov)ov.remove();}
+function copyEmailBody(){copyText(__email.body);toast("Email body copied — paste into your mail app");}
+function copyEmailTo(){copyText(__email.to);toast("Recipients copied");}
+function copyEmailSubject(){copyText(__email.subject);toast("Subject copied");}
+function emailTryApp(){emailDoc(__email.to,__email.subject,__email.body);}
 /* ===== QBR instrument ===== */
 function qbrPrefill(a){
   var last=a.qbr.last||a.started||"";var acc={metrics:[],wins:[],issues:[],actions:[],expansion:[]};
