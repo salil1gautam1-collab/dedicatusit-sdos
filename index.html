@@ -1004,46 +1004,51 @@ function cadDoc(aid,sid,kind,id,mode){
   else if(mode==="print")openPrint(html);
   else{var subj=title+" ("+fmt(e.date)+")";var body="Hi,\n\nPlease find the "+(kind==="msp"?"cadence":"pulse")+" summary for "+(s.tech||"the tech")+" at "+(a.name||"")+", dated "+fmt(e.date)+".\n\n(The document has downloaded — attach it to this email.)\n\nThanks,\n"+((state.me&&state.me.name)||"DedicatusIT");downloadHtmlDoc(fname,html);emailDoc("",subj,body);}
 }
-function satWord(v){return v==="green"?"Positive / on track":v==="amber"?"Steady, a few things to watch":v==="red"?"Needs attention":"On track";}
-function bullets(text){return (text||"").split(/\n+/).map(function(l){return l.trim();}).filter(Boolean).map(function(l){return "- "+l.replace(/^[-•*]\s*/,"");}).join("\n");}
-/* CLIENT EMAIL — from an MSP cadence. Strips: risks, expansion note, private notes. */
+function asSentences(text){return (text||"").split(/\n+/).map(function(l){return l.trim().replace(/^[-•*]\s*/,"");}).filter(Boolean).map(function(l){l=l.charAt(0).toUpperCase()+l.slice(1);if(!/[.!?…]$/.test(l))l+=".";return l;});}
+function bl(arr){return arr.map(function(x){return "- "+x;}).join("\n");}
+function noneish(t){return !t||/^\s*(none|n\/?a|nothing|no\b|nil)\b/i.test(t.trim());}
+function overallLine(v){return v==="green"?"Overall, the engagement is positive and on track.":v==="amber"?"Overall, the engagement is steady, with a few items we're keeping an eye on.":v==="red"?"Overall, there are a few areas we're actively working to address.":"Overall, the engagement is on track.";}
+/* CLIENT EMAIL — Option A richer frames. Uses only safe fields; never risks/expansion/private. */
 function clientEmail(aid,sid,id,mode){
   var a=getA(aid),s=getS(a,sid);var e=(s.mspLog||[]).filter(function(x){return x.id===id;})[0];if(!e)return;
-  var me=(state.me&&state.me.name)||"";
+  var me=(state.me&&state.me.name)||"";var first=s.tech?s.tech.split(" ")[0]:"the technician";
   var subj=(a.name||"Client")+" & DedicatusIT Cadence Summary – "+(s.tech||"our technician")+" – "+fmt(e.date);
   var L=[];
-  L.push("Hi "+(e.attendees?e.attendees.replace(/\s*,\s*/g," and "):"team")+",","");
+  L.push("Hi "+(e.attendees?e.attendees.replace(/\s*,\s*/g," and ").replace(/\s+and\s+([^,]*)$/," and $1"):"team")+",","");
   L.push("Thank you for taking the time to meet with us for our service delivery cadence. It was a productive conversation, and we appreciate the partnership.","");
   L.push("Here's a summary of what we covered:","");
-  L.push("Overall: "+satWord(e.satisfaction),"");
-  if(e.performance){L.push("Performance:",bullets(e.performance),"");}
-  if(e.wins){L.push("Wins / Highlights:",bullets(e.wins),"");}
-  L.push("Concerns / Friction:",(e.friction&&!/^\s*(none|n\/?a|nothing)\b/i.test(e.friction))?bullets(e.friction):"- None raised.","");
-  if(e.decisions){L.push("Discussion:",bullets(e.decisions),"");}
-  L.push("Development:","- We're continuing to invest in "+(s.tech?s.tech.split(" ")[0]:"the team's")+"'s growth so they keep adding value to your team.","");
-  L.push("Thank you again for your feedback and partnership. We appreciate the opportunity to support your team and will continue to ensure "+(s.tech?s.tech.split(" ")[0]:"the team")+"'s success and value to your organization.","","Best regards,",me||"[Your name]","DedicatusIT");
+  L.push(overallLine(e.satisfaction),"");
+  var perf=[];
+  if(e.satisfaction==="green")perf.push(first+" continues to perform well and is handling the workload effectively.");
+  asSentences(e.performance).forEach(function(p){perf.push(p);});
+  if(noneish(e.friction))perf.push("Your feedback was positive, with no service delivery or performance concerns raised.");
+  if(perf.length){L.push("Performance:",bl(perf),"");}
+  if(e.wins){L.push("Wins / Highlights:",bl(asSentences(e.wins)),"");}
+  L.push("Concerns / Friction:",noneish(e.friction)?"- No concerns or service delivery issues were raised.":bl(asSentences(e.friction)),"");
+  if(e.decisions){L.push("Discussion:",bl(asSentences(e.decisions)),"");}
+  L.push("Development:","- We're continuing to invest in "+first+"'s professional development so "+first+" keeps adding value to your team.","");
+  L.push("Thank you again for your feedback and partnership. We appreciate the opportunity to support your team and will continue working to ensure "+first+"'s success and value to your organization.","","Best regards,",me||"[Your name]","DedicatusIT");
   var body=L.join("\n");
-  if(mode==="copy"){copyText(body);toast("Client email copied");}else emailDoc("",subj,body);
+  if(mode==="copy"){copyText(body);toast("Client email copied — paste into your mail app");}else emailDoc("",subj,body);
 }
-/* TECH NOTE — from a tech pulse. Recognition + growth + relayed MSP praise. NEVER includes workload/morale/blockers/unsaid/private. */
+/* TECH NOTE — from a tech pulse. Recognition + growth + relayed MSP praise. NEVER workload/morale/blockers/unsaid/private. */
 function techNote(aid,sid,id,mode){
   var a=getA(aid),s=getS(a,sid);var e=(s.techLog||[]).filter(function(x){return x.id===id;})[0];if(!e)return;
   var me=(state.me&&state.me.name)||"";var first=s.tech?s.tech.split(" ")[0]:"there";
-  // genuine MSP praise: latest MSP cadence wins/performance for this seat
   var msp=(s.mspLog||[]).slice().sort(function(x,y){return x.date<y.date?1:-1;})[0];
-  var praise=msp?((msp.wins||"")+(msp.performance?(msp.wins?" ":"")+msp.performance:"")).trim():"";
+  var praise=msp?asSentences((msp.wins||"")+(msp.performance?"\n"+msp.performance:"")):[];
   var subj="A note from DedicatusIT – "+(s.tech||"")+" – "+fmt(e.date);
   var L=[];
   L.push("Hi "+first+",","");
-  L.push("Thanks for the catch-up — wanted to put a few things in writing.","");
-  if(praise){L.push((a.name||"The client")+" gave really positive feedback this period — they specifically called out your work:","- "+praise.replace(/\n+/g," "),"");}
+  L.push("Thanks for the catch-up — I wanted to put a few things in writing.","");
+  if(praise.length){L.push((a.name||"The client")+" gave really positive feedback this period, and specifically called out your work:",bl(praise),"");}
   else{L.push("The feedback on your work continues to be positive — thank you for the way you show up for "+(a.name||"the client")+".","");}
-  if(e.recognition){L.push("From our side too:",bullets(e.recognition),"");}
-  if(e.growth){L.push("On your growth — we're backing you here, and we'll keep investing in it:",bullets(e.growth),"");}
-  L.push("If anything comes up — workload, tools, a question, anything you need to do your best work — reach out to me anytime. We've got your back.","");
+  if(e.recognition){L.push("From our side too, real credit for:",bl(asSentences(e.recognition)),"");}
+  if(e.growth){L.push("On your growth — we're behind you on this and will keep investing in it:",bl(asSentences(e.growth)),"");}
+  L.push("And if anything ever comes up — workload, tools, a question, anything you need to do your best work — reach out to me anytime. We've got your back.","");
   L.push("Thanks again,",me||"[Your name]","DedicatusIT");
   var body=L.join("\n");
-  if(mode==="copy"){copyText(body);toast("Tech note copied");}else emailDoc("",subj,body);
+  if(mode==="copy"){copyText(body);toast("Tech note copied — paste into your mail app");}else emailDoc("",subj,body);
 }
 function copyText(t){try{if(navigator.clipboard){navigator.clipboard.writeText(t);return;}}catch(e){}var ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}ta.remove();}
 /* ===== QBR instrument ===== */
